@@ -27,12 +27,14 @@ inside a git repository, `$RC` says so; stop and tell the user.
      `github.com/discobox-ai/repostd/cmd/repocheck`: `$RC` is
      `go tool repocheck`.
    - `go` is on `PATH`: `$RC` is
-     `env GOTOOLCHAIN=auto go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
+     `env GOTOOLCHAIN=auto GOPROXY=direct go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
      It downloads and builds on first use, installs nothing, and never
      edits the repo's `go.mod`. `GOTOOLCHAIN=auto` fetches a newer Go if
-     the installed one is too old.
+     the installed one is too old. `GOPROXY=direct` reads `main` straight
+     from GitHub, because the module proxy serves a cached `@main` for a
+     while after each push.
    - `nix` is on `PATH`: `$RC` is
-     `nix shell nixpkgs#go -c env GOTOOLCHAIN=auto go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
+     `nix shell nixpkgs#go -c env GOTOOLCHAIN=auto GOPROXY=direct go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
    - Otherwise stop, and tell the user to install Go.
 2. **Check.** Run `$RC`. It prints one finding per line, in the form
    `path: severity [rule-id] message`, then a summary. It exits 1 when any
@@ -48,7 +50,8 @@ inside a git repository, `$RC` says so; stop and tell the user.
 5. **Conform**, when asked:
    - With no `go.mod`, ask the user for the module path (normally
      `github.com/discobox-ai/<repo>`) and run `go mod init <path>`.
-   - Pin the tool: `go get -tool github.com/discobox-ai/repostd/cmd/repocheck@main`.
+   - Pin the tool:
+     `env GOPROXY=direct go get -tool github.com/discobox-ai/repostd/cmd/repocheck@main`.
      From then on `$RC` is `go tool repocheck`.
    - Run `$RC init`. It writes the starter files that are missing, the
      managed files, and the symlinks, and never overwrites an existing
