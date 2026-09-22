@@ -121,6 +121,11 @@ func sync(r *repo.Repo, stdout io.Writer) error {
 }
 
 func initRepo(ctx context.Context, r *repo.Repo, stdout io.Writer) error {
+	// Starter files carry the module path, so a repo without go.mod would
+	// bake the directory name into the Taskfile and AGENTS.md.
+	if r.Mod == nil {
+		return fmt.Errorf("no go.mod in %s; run `go mod init github.com/discobox-ai/%s` first", r.Root, r.Name())
+	}
 	starter, err := starterFiles(r)
 	if err != nil {
 		return err

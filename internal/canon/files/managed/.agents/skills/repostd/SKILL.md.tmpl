@@ -36,20 +36,40 @@ inside a git repository, `$RC` says so; stop and tell the user.
    - `nix` is on `PATH`: `$RC` is
      `nix shell nixpkgs#go -c env GOTOOLCHAIN=auto GOPROXY=direct go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
    - Otherwise stop, and tell the user to install Go.
-2. **Check.** Run `$RC`. It prints one finding per line, in the form
+2. **New repo?** If the directory is empty or has no commits, this is a new
+   repo. Run, in order, and then report as in step 5:
+   - `git init -b main` when it is not a repo yet.
+   - `go mod init github.com/discobox-ai/<repo>`, asking the user if the
+     module path is not obvious. `$RC init` refuses to run without a
+     `go.mod`, because the starter files carry the module path.
+   - `$RC init`, which writes every starter and managed file and the
+     symlinks.
+   - `env GOPROXY=direct go get -tool` for
+     `github.com/go-task/task/v3/cmd/task`,
+     `github.com/golangci/golangci-lint/v2/cmd/golangci-lint` and
+     `github.com/discobox-ai/repostd/cmd/repocheck@main`.
+   - `nix flake lock`, then write `cmd/<repo>/main.go` and
+     `internal/version/version.go`.
+   - Fill in every TODO the starters leave: what the repo is, in `README.md`,
+     `DESIGN.md` and `AGENTS.md`'s Project Structure.
+   - `$RC` until clean, then `nix develop -c go tool task ci`, then commit.
+   - Creating the GitHub repo and pushing is the user's call; ask.
+3. **Check.** Run `$RC`. It prints one finding per line, in the form
    `path: severity [rule-id] message`, then a summary. It exits 1 when any
    unwaived error remains. `$RC rules` lists every rule.
-3. **Review.** Read the untagged rules below against the repo; they are
+4. **Review.** Read the untagged rules below against the repo; they are
    what `$RC` cannot check. Examples: packages in `pkg/` that nothing
    imports, a `DESIGN.md` describing planned work, workflows with logic
    beyond task calls.
-4. **Report.** Group the findings by section (layout, docs, ADRs, agents,
+5. **Report.** Group the findings by section (layout, docs, ADRs, agents,
    env, lint, tests, CI, release, git). For each group, say what is wrong
-   and whether the fix is mechanical (step 5) or needs a decision. Stop
+   and whether the fix is mechanical (step 6) or needs a decision. Stop
    here unless the user asked to fix or conform.
-5. **Conform**, when asked:
+6. **Conform**, when asked:
    - With no `go.mod`, ask the user for the module path (normally
      `github.com/discobox-ai/<repo>`) and run `go mod init <path>`.
+     `$RC init` refuses to run without one, because the starter files carry
+     the module path.
    - Pin the tool:
      `env GOPROXY=direct go get -tool github.com/discobox-ai/repostd/cmd/repocheck@main`.
      From then on `$RC` is `go tool repocheck`.
