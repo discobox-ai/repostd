@@ -48,6 +48,8 @@ inside a git repository, `$RC` says so; stop and tell the user.
      `github.com/go-task/task/v3/cmd/task`,
      `github.com/golangci/golangci-lint/v2/cmd/golangci-lint` and
      `github.com/discobox-ai/repostd/cmd/repocheck@main`.
+   - `go mod tidy`, because `go get -tool` leaves `go.sum` incomplete and
+     `verify` would fail on it.
    - `nix flake lock`, then write `cmd/<repo>/main.go` and
      `internal/version/version.go`.
    - Fill in every TODO the starters leave: what the repo is, in `README.md`,
