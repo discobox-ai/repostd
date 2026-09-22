@@ -158,6 +158,20 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 			"internal/x/x_test.go": "package x\n\nvar env = map[string]string{\"EXAMPLE_E2E\": \"true\"}\n",
 		}, want: "tests.env-read"},
 		{name: "a GitHub-hosted runner in matrix.include", files: map[string]string{".github/workflows/build.yml": "on: push\npermissions:\n  contents: read\njobs:\n  build:\n    strategy:\n      matrix:\n        include:\n          - runs-on: depot-ubuntu-24.04-4\n          - runs-on: macos-15\n    runs-on: ${{ matrix.runs-on }}\n    steps:\n      - run: go tool task build\n"}, want: "ci.runners"},
+		{name: "a dev target without watchnbuild", files: map[string]string{
+			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go run ./cmd/example]\n\n  test:\n"),
+			".wnb.yaml":    "build:\n  command: go build ./...\n",
+		}, want: "env.dev-watch"},
+		{name: "an orphaned watchnbuild config", files: map[string]string{".wnb.yaml": "build:\n  command: go build ./...\n"}, want: "env.dev-watch"},
+		{name: "a dev target using a config that does not exist", files: map[string]string{
+			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:cli:\n    cmds: [go tool watchnbuild -config .wnb.cli.yaml]\n\n  test:\n"),
+			".wnb.yaml":    "build:\n  command: go build ./...\n",
+			"go.mod":       strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1),
+		}, want: "env.dev-watch"},
+		{name: "a watchnbuild loop without the tool pinned", files: map[string]string{
+			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"),
+			".wnb.yaml":    "build:\n  command: go build ./...\n",
+		}, want: "env.dev-watch"},
 		{name: "a job on a GitHub-hosted runner", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-ubuntu-24.04-4", "ubuntu-latest")}, want: "ci.runners"},
 		{name: "setup-go on Linux", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-windows-2025-4", "depot-ubuntu-24.04-4")}, want: "ci.no-setup"},
 		{name: "build logic in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "run: go tool task test", "run: go test ./...")}, want: "ci.run-steps"},

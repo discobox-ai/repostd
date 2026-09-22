@@ -20,6 +20,13 @@ var RequiredTools = []string{
 // RequiredTargets are the Taskfile targets every repo has.
 var RequiredTargets = []string{"build", "test", "check", "fmt", "tidy", "generate", "verify", "ci"}
 
+// WatchTool is the hot-reload loop a `dev` target runs.
+const WatchTool = "github.com/discobox-ai/watchnbuild"
+
+// wnbConfigRE matches a watchnbuild config name: .wnb.yaml, or .wnb.<name>.yaml
+// for a second loop.
+var wnbConfigRE = regexp.MustCompile(`\.wnb(?:\.[a-z0-9-]+)?\.yaml`)
+
 // repocheckRunRE matches a Taskfile command running repocheck's checks.
 var repocheckRunRE = regexp.MustCompile(`(?m)go tool repocheck(\s+check)?\s*$`)
 
@@ -110,6 +117,59 @@ var envRules = []Rule{
 			}
 			if !repocheckRunRE.MatchString(raw) {
 				out = append(out, issue("Taskfile.yml", "no target runs `go tool repocheck` (check must)"))
+			}
+			return out
+		},
+	},
+	{
+		ID:      "env.dev-watch",
+		Summary: "Where there is a dev target, hot reload is watchnbuild against a .wnb.yaml, and no config is orphaned.",
+		Check: func(r *repo.Repo) []Issue {
+			tasks, raw, err := taskfile(r)
+			if err != nil {
+				return nil // env.taskfile-targets reports it.
+			}
+			hasDev := false
+			for name := range tasks {
+				hasDev = hasDev || name == "dev" || strings.HasPrefix(name, "dev:")
+			}
+			configs := r.Match(".wnb*.yaml")
+			if !hasDev && len(configs) == 0 {
+				return nil // A repo with no long-running program needs neither.
+			}
+
+			var out []Issue
+			// A repo may have helper dev:* targets that do not hot-reload, so
+			// this asks only that the loop exists and is wired up.
+			switch {
+			case !hasDev:
+				out = append(out, issue(configs[0], "watchnbuild config without a dev target"))
+			case !strings.Contains(raw, "watchnbuild"):
+				out = append(out, issue("Taskfile.yml", "no dev target runs watchnbuild; hot reload is `go tool watchnbuild -config <file>`"))
+			case !r.Has(".wnb.yaml"):
+				out = append(out, issue(".wnb.yaml", "dev target without a .wnb.yaml"))
+			}
+			if hasDev && r.Mod != nil {
+				pinned := false
+				for _, t := range r.Mod.Tool {
+					pinned = pinned || t.Path == WatchTool
+				}
+				if !pinned && strings.Contains(raw, "watchnbuild") {
+					out = append(out, issue("go.mod", "missing tool directive %s (go get -tool %s)", WatchTool, WatchTool))
+				}
+			}
+			used := map[string]bool{}
+			for _, c := range wnbConfigRE.FindAllString(raw, -1) {
+				used[c] = true
+				if !r.Has(c) {
+					out = append(out, issue("Taskfile.yml", "a dev target uses %s, which does not exist", c))
+				}
+			}
+			for _, c := range configs {
+				// .wnb.yaml is watchnbuild's default, so it needs no mention.
+				if c != ".wnb.yaml" && !used[c] {
+					out = append(out, issue(c, "no dev target uses this config"))
+				}
 			}
 			return out
 		},

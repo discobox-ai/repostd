@@ -192,12 +192,19 @@ inside a git repository, `$RC` says so; stop and tell the user.
   |---|---|
   | `build` | Builds into `build/`. |
   | `run` | Runs the program, where there is one. |
+  | `dev` | Hot-reloads it through watchnbuild, where there is one. `env.dev-watch` |
   | `test` | `go test -race`. `env.test-race` |
   | `check` | golangci-lint, `repocheck`, shellcheck, actionlint. |
   | `fmt`, `tidy`, `generate` | Format, tidy go.mod, regenerate code. |
   | `verify` | fmt, tidy, generate and `repocheck sync` leave the tree unchanged. |
   | `ci` | `verify` + `check` + `test`. |
 
+- A repo with a long-running program (a server, a daemon) has a `dev`
+  target: hot reload through `go tool watchnbuild`, configured by
+  `.wnb.yaml` at the root, with `.wnb.<name>.yaml` for a second loop such as
+  a CLI built beside the server. Pin
+  `github.com/discobox-ai/watchnbuild` as a tool. Every config is used by a
+  dev target, and every dev target drives watchnbuild. `env.dev-watch`
 - Logic beyond a few lines goes in a Go program under `internal/cmd`, not in
   Taskfile shell or workflow YAML. Shared programs go in repostd or `x`.
 
