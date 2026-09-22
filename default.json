@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "discobox-ai shared Renovate preset. Repos extend it as \"github>discobox-ai/repostd\".",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "nix": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "description": "discobox-ai modules are consumed at main; track their latest commit.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/discobox-ai/**"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": false
+    }
+  ]
+}
