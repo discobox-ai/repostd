@@ -180,6 +180,15 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a server without a generated schema", files: map[string]string{
 			"cmd/example-server/main.go": "package main\n\nfunc main() {}\n",
 		}, want: "config.schema"},
+		{name: "a hook running a tool directly", files: map[string]string{".discobox/hooks/50-x.sh": "#!/bin/bash\n#---\n# name: X\n# type: file\n# pattern: \"**/*.go\"\n#---\n\ngo test ./...\n"}, want: "discobox.hooks"},
+		{name: "a hook without frontmatter", files: map[string]string{".discobox/hooks/50-x.sh": "#!/bin/bash\n\ngo tool task test\n"}, want: "discobox.hooks"},
+		{name: "no hooks at all", remove: []string{".discobox/hooks"}, want: "discobox.hooks"},
+		{name: "a dev target with no service", files: map[string]string{
+			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"),
+			".wnb.yaml":    "build:\n  command: go build ./...\n",
+			"go.mod":       strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1),
+		}, want: "discobox.dev-service"},
+		{name: "a service without frontmatter", files: map[string]string{".discobox/services/10-api.sh": "#!/bin/bash\n\nexec go tool task dev\n"}, want: "discobox.services"},
 		{name: "a job on a GitHub-hosted runner", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-ubuntu-24.04-4", "ubuntu-latest")}, want: "ci.runners"},
 		{name: "setup-go on Linux", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-windows-2025-4", "depot-ubuntu-24.04-4")}, want: "ci.no-setup"},
 		{name: "build logic in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "run: go tool task test", "run: go test ./...")}, want: "ci.run-steps"},
@@ -255,7 +264,7 @@ func TestAWaiverWithoutAReasonIsRejected(t *testing.T) {
 	}
 }
 
-var citedRE = regexp.MustCompile("`((?:layout|docs|adr|agents|env|config|managed|tests|ci|git)\\.[a-z-]+)`")
+var citedRE = regexp.MustCompile("`((?:layout|docs|adr|agents|env|config|discobox|managed|tests|ci|git)\\.[a-z-]+)`")
 
 func TestTheSkillCitesExactlyTheRulesThatExist(t *testing.T) {
 	skill, ok := canon.ManagedFile(".agents/skills/repostd/SKILL.md")
@@ -315,6 +324,29 @@ func TestAServerConfiguredByFileAndEnvPasses(t *testing.T) {
 	for _, id := range failing(t, dir) {
 		if strings.HasPrefix(id, "config.") {
 			t.Errorf("failing rule %s; this server conforms", id)
+		}
+	}
+}
+
+func TestADevTargetWithItsServiceAndHooksPasses(t *testing.T) {
+	dir := conforming(t)
+	write(t, dir, "Taskfile.yml", starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"))
+	write(t, dir, ".wnb.yaml", "build:\n  command: go build ./...\n")
+	write(t, dir, "go.mod", strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1))
+	write(t, dir, ".discobox/services/10-api.sh", "#!/bin/bash\n#---\n# name: API\n# description: the dev loop\n#---\n\nexec go tool task dev\n")
+	for _, id := range failing(t, dir) {
+		if strings.HasPrefix(id, "discobox.") || id == "env.dev-watch" {
+			t.Errorf("failing rule %s; this dev loop conforms", id)
+		}
+	}
+}
+
+func TestAToolNamedInAHooksErrorMessageIsNotARun(t *testing.T) {
+	dir := conforming(t)
+	write(t, dir, ".discobox/hooks/50-check.sh", "#!/bin/bash\n#---\n# name: Check\n# type: file\n# pattern: \"**/*.go\"\n#---\n\ngo tool task check || {\n\tcat >&2 <<'EOF'\ngolangci-lint could not apply its config; clean the cache:\n\tgo tool golangci-lint cache clean\nEOF\n\texit 1\n}\n")
+	for _, id := range failing(t, dir) {
+		if id == "discobox.hooks" {
+			t.Error("a tool named inside a heredoc was read as the hook running it")
 		}
 	}
 }

@@ -18,6 +18,10 @@ var (
 		"docs/adr/template.md",
 	}
 	wantStarter = []string{
+		".discobox/hooks/10-gofmt.sh",
+		".discobox/hooks/11-go-mod-tidy.sh",
+		".discobox/hooks/80-review-test.sh",
+		".discobox/hooks/90-review-check.sh",
 		".envrc", ".gitattributes", ".github/workflows/ci.yml", ".gitignore",
 		"AGENTS.md", "DESIGN.md", "LICENSE", "NOTICE", "README.md", "SECURITY.md",
 		"Taskfile.yml", "docs/adr/README.md", "flake.nix", "renovate.json",

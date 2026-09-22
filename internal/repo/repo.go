@@ -184,13 +184,18 @@ func (r *Repo) Under(dir string) []string {
 	return out
 }
 
-// Write writes data to p, creating parent directories.
+// Write writes data to p, creating parent directories. A shell script is
+// written executable, because a hook or service is run, not sourced.
 func (r *Repo) Write(p string, data []byte) error {
 	abs := r.Abs(p)
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(abs, data, 0o644) //nolint:gosec // G306: repo files are world-readable by design.
+	mode := fs.FileMode(0o644)
+	if path.Ext(p) == ".sh" {
+		mode = 0o755
+	}
+	return os.WriteFile(abs, data, mode) //nolint:gosec // G306: repo files are world-readable by design.
 }
 
 // Symlink creates p pointing at target. It fails if p exists.

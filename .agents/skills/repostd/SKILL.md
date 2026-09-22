@@ -174,7 +174,21 @@ inside a git repository, `$RC` says so; stop and tell the user.
   `../.agents/skills`. `agents.skills-symlink`
 - `.claude/settings.local.json` is never committed.
   `agents.no-settings-local`
-- `.discobox/hooks/*` call Taskfile targets and nothing else.
+- `.discobox/hooks/NN-<name>.sh` run on change inside a discobox. Each
+  declares itself in a `#---` frontmatter block (`name`, `type: file|session`,
+  `pattern`, optional `notify_llm` and `phase: review`) and is a thin trigger
+  for `go tool task <target>`. A hook never runs go, gofmt, golangci-lint or
+  another tool directly: the rule lives in the Taskfile so the hook, a
+  terminal and CI cannot drift. The baseline is fmt, tidy, test and check.
+  `discobox.hooks`
+- `.discobox/services/NN-<name>.sh` are the long-running processes a
+  discobox starts. They declare themselves the same way (`name`,
+  `description`, `ports:` when dockerd publishes them) and set the
+  environment a developer would. A service for this repo's own program
+  `exec`s a Taskfile target; an auxiliary one, such as a metrics dashboard,
+  may run a container. `discobox.services`
+- A repo with a `dev` target has a service that runs `go tool task dev`, so
+  the dev loop is running as soon as the sandbox is up. `discobox.dev-service`
 
 ## 4. Environment and tools
 

@@ -70,7 +70,7 @@ func warning(p, format string, args ...any) Issue {
 // All returns every rule, sorted by ID.
 func All() []Rule {
 	var all []Rule
-	for _, group := range [][]Rule{layoutRules, docsRules, adrRules, agentsRules, envRules, configRules, lintRules, testsRules, ciRules, gitRules} {
+	for _, group := range [][]Rule{layoutRules, docsRules, adrRules, agentsRules, envRules, configRules, discoboxRules, lintRules, testsRules, ciRules, gitRules} {
 		all = append(all, group...)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
