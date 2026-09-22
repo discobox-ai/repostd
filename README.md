@@ -4,6 +4,13 @@ The discobox-ai repository standard, and `repocheck`, the tool that enforces
 it. The standard covers code layout, docs, agent config, tooling, lint, tests,
 CI, and release.
 
+**Check any repo:** point an agent at the skill and ask it to run it, e.g.
+"run the skill at
+https://raw.githubusercontent.com/discobox-ai/repostd/main/.agents/skills/repostd/SKILL.md".
+The skill is self-contained. It needs only git and Go (or Nix), installs
+nothing, and reports on the git repo in the current directory. Ask it to
+"conform" to have it fix what it finds.
+
 The standard itself is the `repostd` skill:
 [`internal/canon/files/managed/.agents/skills/repostd/SKILL.md.tmpl`](internal/canon/files/managed/.agents/skills/repostd/SKILL.md.tmpl).
 Every conforming repo carries a synced copy at

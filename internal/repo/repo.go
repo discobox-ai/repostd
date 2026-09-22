@@ -41,9 +41,10 @@ type Waiver struct {
 	Reason string `yaml:"reason"`
 }
 
-// Load reads the repository at root.
-func Load(ctx context.Context, root string) (*Repo, error) {
-	abs, err := filepath.Abs(root)
+// Load reads the git repository containing dir. dir may be any directory
+// inside it.
+func Load(ctx context.Context, dir string) (*Repo, error) {
+	abs, err := toplevel(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +72,18 @@ func Load(ctx context.Context, root string) (*Repo, error) {
 		r.Waivers = cfg.Waivers
 	}
 	return r, nil
+}
+
+// toplevel returns the root of the git work tree containing dir.
+func toplevel(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		abs, _ := filepath.Abs(dir)
+		return "", fmt.Errorf("%s is not inside a git repository", abs)
+	}
+	return filepath.FromSlash(strings.TrimSpace(string(out))), nil
 }
 
 func listFiles(ctx context.Context, root string) ([]string, error) {

@@ -266,3 +266,21 @@ func TestAnEnvVarReadThroughAConstantCounts(t *testing.T) {
 		t.Errorf("failing rules = %v; a const-declared env var is a read", got)
 	}
 }
+
+func TestLoadFromASubdirectoryChecksTheWholeRepo(t *testing.T) {
+	dir := conforming(t)
+	r, err := repo.Load(t.Context(), filepath.Join(dir, "cmd", "example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Has("AGENTS.md") {
+		t.Errorf("Files = %v, want paths relative to the repo root", r.Files)
+	}
+}
+
+func TestLoadOutsideAGitRepositoryFailsClearly(t *testing.T) {
+	_, err := repo.Load(t.Context(), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "not inside a git repository") {
+		t.Errorf("err = %v, want \"not inside a git repository\"", err)
+	}
+}

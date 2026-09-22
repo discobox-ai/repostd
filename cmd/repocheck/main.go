@@ -5,6 +5,7 @@
 //	repocheck sync      rewrite managed files, the ADR index, and symlinks
 //	repocheck init      write missing starter files, then sync
 //	repocheck rules     list every rule
+//	repocheck show P    print the starter or managed file P as this repo would get it
 package main
 
 import (
@@ -14,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/discobox-ai/repostd/internal/canon"
@@ -42,7 +44,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	root := fs.String("C", ".", "repository root")
 	showWaived := fs.Bool("waived", false, "also list waived findings (check)")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: repocheck [-C dir] [check|sync|init|rules]")
+		fmt.Fprintln(fs.Output(), "usage: repocheck [-C dir] [check|sync|init|rules|show <path>]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -52,7 +54,10 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	if fs.NArg() > 0 {
 		cmd = fs.Arg(0)
 	}
-	if fs.NArg() > 1 {
+	if cmd == "show" && fs.NArg() != 2 {
+		return errors.New("usage: repocheck show <path>")
+	}
+	if cmd != "show" && fs.NArg() > 1 {
 		return fmt.Errorf("unexpected arguments after %q", cmd)
 	}
 
@@ -74,6 +79,8 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return sync(r, stdout)
 	case "init":
 		return initRepo(ctx, r, stdout)
+	case "show":
+		return show(r, fs.Arg(1), stdout)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -114,11 +121,7 @@ func sync(r *repo.Repo, stdout io.Writer) error {
 }
 
 func initRepo(ctx context.Context, r *repo.Repo, stdout io.Writer) error {
-	module := r.Name()
-	if r.Mod != nil && r.Mod.Module != nil {
-		module = r.Mod.Module.Mod.Path
-	}
-	starter, err := canon.Starter(canon.Vars{Module: module, Name: r.Name(), Year: time.Now().Year()})
+	starter, err := starterFiles(r)
 	if err != nil {
 		return err
 	}
@@ -136,4 +139,34 @@ func initRepo(ctx context.Context, r *repo.Repo, stdout io.Writer) error {
 		return err
 	}
 	return sync(r, stdout)
+}
+
+// show prints what the repo would get at p: the managed content, or the
+// starter template rendered for this repo, for merging by hand.
+func show(r *repo.Repo, p string, stdout io.Writer) error {
+	want, err := managed.Expected(r)
+	if err != nil {
+		return err
+	}
+	starter, err := starterFiles(r)
+	if err != nil {
+		return err
+	}
+	var paths []string
+	for _, f := range append(want, starter...) {
+		if f.Path == p {
+			_, err := stdout.Write(f.Data)
+			return err
+		}
+		paths = append(paths, f.Path)
+	}
+	return fmt.Errorf("no starter or managed file %q; one of: %s", p, strings.Join(paths, ", "))
+}
+
+func starterFiles(r *repo.Repo) ([]canon.File, error) {
+	module := r.Name()
+	if r.Mod != nil && r.Mod.Module != nil {
+		module = r.Mod.Module.Mod.Path
+	}
+	return canon.Starter(canon.Vars{Module: module, Name: r.Name(), Year: time.Now().Year()})
 }

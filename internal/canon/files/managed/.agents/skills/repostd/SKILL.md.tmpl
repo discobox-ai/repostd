@@ -14,21 +14,64 @@ rules need judgment: apply them when writing and reviewing.
 
 ## Workflow
 
-- New repo: `go get -tool github.com/discobox-ai/repostd/cmd/repocheck@main`,
-  then `go tool repocheck init`. It writes the starter files that are
-  missing, the managed files, and the symlinks. It never overwrites a
-  starter file. Fill in the TODOs it leaves.
-- Existing repo: `go tool repocheck` lists findings. `go tool repocheck sync`
-  rewrites managed files and the ADR index. Fix everything else by hand,
-  following the rule text below. `go tool repocheck rules` lists every rule.
-- Deviations: add a waiver to `.repocheck.yaml` only when conforming is wrong
-  for this repo, not merely inconvenient. A waiver is `rule`, optional
-  `path` glob, and a required `reason`. Surface every new waiver to the
-  user.
-- Managed files (`.golangci.yml`, `.github/actions/task/action.yml`,
-  `.github/actionlint.yaml`, `docs/adr/template.md`, this skill) come from
-  repostd. Change them
-  upstream, never locally, except inside `.golangci.yml`'s
+This skill is self-contained. It may be read from its URL,
+`https://raw.githubusercontent.com/discobox-ai/repostd/main/.agents/skills/repostd/SKILL.md`,
+without being installed, by any agent. It works on the git repository that
+contains the current directory, whatever state that repository is in, even
+empty. `$RC` finds the repo root itself. If the current directory is not
+inside a git repository, `$RC` says so; stop and tell the user.
+
+1. **Pick the runner, `$RC`.** Needs nothing but git and a Go toolchain.
+   Use the first of these that applies:
+   - `go.mod` has a `tool` directive for
+     `github.com/discobox-ai/repostd/cmd/repocheck`: `$RC` is
+     `go tool repocheck`.
+   - `go` is on `PATH`: `$RC` is
+     `env GOTOOLCHAIN=auto go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
+     It downloads and builds on first use, installs nothing, and never
+     edits the repo's `go.mod`. `GOTOOLCHAIN=auto` fetches a newer Go if
+     the installed one is too old.
+   - `nix` is on `PATH`: `$RC` is
+     `nix shell nixpkgs#go -c env GOTOOLCHAIN=auto go run github.com/discobox-ai/repostd/cmd/repocheck@main`.
+   - Otherwise stop, and tell the user to install Go.
+2. **Check.** Run `$RC`. It prints one finding per line, in the form
+   `path: severity [rule-id] message`, then a summary. It exits 1 when any
+   unwaived error remains. `$RC rules` lists every rule.
+3. **Review.** Read the untagged rules below against the repo; they are
+   what `$RC` cannot check. Examples: packages in `pkg/` that nothing
+   imports, a `DESIGN.md` describing planned work, workflows with logic
+   beyond task calls.
+4. **Report.** Group the findings by section (layout, docs, ADRs, agents,
+   env, lint, tests, CI, release, git). For each group, say what is wrong
+   and whether the fix is mechanical (step 5) or needs a decision. Stop
+   here unless the user asked to fix or conform.
+5. **Conform**, when asked:
+   - With no `go.mod`, ask the user for the module path (normally
+     `github.com/discobox-ai/<repo>`) and run `go mod init <path>`.
+   - Pin the tool: `go get -tool github.com/discobox-ai/repostd/cmd/repocheck@main`.
+     From then on `$RC` is `go tool repocheck`.
+   - Run `$RC init`. It writes the starter files that are missing, the
+     managed files, and the symlinks, and never overwrites an existing
+     file. Where the repo already has its own version of a starter file,
+     `$RC show <path>` prints the starter filled in for this repo (for
+     example `$RC show Taskfile.yml`). Merge what it adds into the repo's
+     file by hand, such as Taskfile targets, flake packages or AGENTS.md
+     sections, and fill in every TODO.
+   - Run `$RC sync` whenever managed files or ADRs change.
+   - Fix everything else by hand, following the rule text below. Run
+     `nix flake lock` if the repo has a new flake.
+   - Re-run `$RC` until it is clean, then run `go tool task ci`.
+   - Anything that needs a decision goes to the user; don't guess. Moving
+     packages, renumbering ADRs and deleting files all need a decision.
+
+- **Waivers.** Add one to `.repocheck.yaml` only when conforming is wrong for
+  this repo, not merely inconvenient. A waiver is a `rule`, an optional
+  `path` glob, and a required `reason`. Tell the user about every new
+  waiver.
+- **Managed files** come from repostd: `.golangci.yml`,
+  `.github/actions/task/action.yml`, `.github/actionlint.yaml`,
+  `docs/adr/template.md`, and this skill. Change them upstream, never
+  locally. The one exception is inside `.golangci.yml`'s
   `# repostd:local` blocks.
 
 ## 1. Code layout
