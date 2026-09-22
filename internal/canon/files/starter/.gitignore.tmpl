@@ -3,8 +3,10 @@
 # direnv and nix.
 /.direnv/
 /result*
-# Local environment; .env.example is the committed template.
-.env*
+# Local environment; .env.example is the committed template. Narrower than
+# ".env*", which would also ignore the committed .envrc.
+.env
+.env.*
 !.env.example
 # Agent worktrees.
 /.*/worktrees/
