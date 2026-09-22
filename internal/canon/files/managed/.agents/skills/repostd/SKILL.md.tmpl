@@ -208,14 +208,43 @@ inside a git repository, `$RC` says so; stop and tell the user.
 - Logic beyond a few lines goes in a Go program under `internal/cmd`, not in
   Taskfile shell or workflow YAML. Shared programs go in repostd or `x`.
 
-## 5. Lint
+## 5. Server configuration
+
+A repo whose server binary is `cmd/<name>-server` follows this. A library or
+CLI repo has no server and skips it.
+
+- The server is configured by **one file plus environment overrides, and no
+  configuration flags**. It accepts only `--config` (where the file is),
+  `--check-config` (validate and exit, for deploy pipelines) and
+  `--version`. `config.no-flags`
+- The **`Config` struct is the source of truth**. The JSON schema and the
+  commented example config are generated from it by `task generate` and
+  committed, so `verify` fails when they drift. `config.schema`
+- Use the shared loader `github.com/discobox-ai/x/config`; nothing about
+  loading, env binding or schema generation is written per repo.
+- **Precedence** is defaults, then file, then environment, applied in one
+  direction and never overridden later. Whatever wins, always wins.
+- **An unknown key in the file fails startup**, naming the key.
+- **Environment names are derived** from the key path:
+  `<REPO>_<KEY_PATH>` upper-snaked, e.g. `iroh.logLevel` →
+  `<REPO>_IROH_LOG_LEVEL`. A variable matching that prefix but no setting
+  fails startup, so a misspelled override is never silently the default. An
+  explicit name is the escape hatch for a spelling an external spec fixes,
+  such as the `OTEL_*` variables.
+- **Secrets** are settable by file path (`file:/run/secrets/key`), because
+  Kubernetes, systemd and Docker all deliver secrets as files.
+- A `.env` file is a development convenience, named for the program
+  (`.<binary>.env`), never plain `.env`, and never replaces a variable that
+  is already set.
+
+## 6. Lint
 
 - `.golangci.yml` is managed. Repo additions go only inside the
   `# repostd:local` blocks. `managed.files`
 - It bans testify with depguard, and `nolintlint` requires every `nolint` to
   be specific and explained.
 
-## 6. Tests
+## 7. Tests
 
 - Use the standard `testing` package. testify is banned; go-cmp is allowed.
   `tests.no-testify`
@@ -227,7 +256,7 @@ inside a git repository, `$RC` says so; stop and tell the user.
   test. `tests.env-read`
 - Test-helper packages are named `<pkg>test`. Test names read as sentences.
 
-## 7. CI (GitHub Actions on Depot runners)
+## 8. CI (GitHub Actions on Depot runners)
 
 - `.github/workflows/ci.yml` runs on `pull_request` and on `push` to `main`,
   with jobs `verify`, `check` and `test`. Each job runs `actions/checkout`
@@ -249,7 +278,7 @@ inside a git repository, `$RC` says so; stop and tell the user.
   (including `tool` directives), action digests and `flake.lock`.
   `ci.renovate`
 
-## 8. Release
+## 9. Release
 
 - No goreleaser. `.github/workflows/release.yml` runs on `v*` tags and calls
   only `go tool task release:*` targets. `ci.release`
@@ -260,7 +289,7 @@ inside a git repository, `$RC` says so; stop and tell the user.
   version is set by ldflags into `internal/version` and falls back to the
   VCS revision.
 
-## 9. Git
+## 10. Git
 
 - `.gitattributes` starts with `* text=auto eol=lf`. `git.attributes`
 - `.gitignore` covers `build/`, `.direnv/`, `.env` and `result`.

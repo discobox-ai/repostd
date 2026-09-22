@@ -172,6 +172,14 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"),
 			".wnb.yaml":    "build:\n  command: go build ./...\n",
 		}, want: "env.dev-watch"},
+		{name: "a server taking a config flag", files: map[string]string{
+			"cmd/example-server/main.go": "package main\n\nimport \"flag\"\n\nfunc main() {\n\tflag.String(\"listen\", \":8080\", \"address\")\n}\n",
+			"config.schema.json":         "{}\n",
+			"server.example.yaml":        "# example\n",
+		}, want: "config.no-flags"},
+		{name: "a server without a generated schema", files: map[string]string{
+			"cmd/example-server/main.go": "package main\n\nfunc main() {}\n",
+		}, want: "config.schema"},
 		{name: "a job on a GitHub-hosted runner", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-ubuntu-24.04-4", "ubuntu-latest")}, want: "ci.runners"},
 		{name: "setup-go on Linux", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-windows-2025-4", "depot-ubuntu-24.04-4")}, want: "ci.no-setup"},
 		{name: "build logic in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "run: go tool task test", "run: go test ./...")}, want: "ci.run-steps"},
@@ -247,7 +255,7 @@ func TestAWaiverWithoutAReasonIsRejected(t *testing.T) {
 	}
 }
 
-var citedRE = regexp.MustCompile("`((?:layout|docs|adr|agents|env|managed|tests|ci|git)\\.[a-z-]+)`")
+var citedRE = regexp.MustCompile("`((?:layout|docs|adr|agents|env|config|managed|tests|ci|git)\\.[a-z-]+)`")
 
 func TestTheSkillCitesExactlyTheRulesThatExist(t *testing.T) {
 	skill, ok := canon.ManagedFile(".agents/skills/repostd/SKILL.md")
@@ -296,5 +304,17 @@ func TestLoadOutsideAGitRepositoryFailsClearly(t *testing.T) {
 	_, err := repo.Load(t.Context(), t.TempDir())
 	if err == nil || !strings.Contains(err.Error(), "not inside a git repository") {
 		t.Errorf("err = %v, want \"not inside a git repository\"", err)
+	}
+}
+
+func TestAServerConfiguredByFileAndEnvPasses(t *testing.T) {
+	dir := conforming(t)
+	write(t, dir, "cmd/example-server/main.go", "package main\n\nimport \"flag\"\n\nfunc main() {\n\tflag.String(\"config\", \"\", \"config file\")\n\tflag.Bool(\"check-config\", false, \"validate and exit\")\n\tflag.Bool(\"version\", false, \"print the version\")\n}\n")
+	write(t, dir, "config.schema.json", "{}\n")
+	write(t, dir, "server.example.yaml", "# example\n")
+	for _, id := range failing(t, dir) {
+		if strings.HasPrefix(id, "config.") {
+			t.Errorf("failing rule %s; this server conforms", id)
+		}
 	}
 }
