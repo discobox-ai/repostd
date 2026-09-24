@@ -130,8 +130,15 @@ func initRepo(ctx context.Context, r *repo.Repo, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	misnamed := rules.MisnamedDesignDocs(r)
 	for _, f := range starter {
 		if r.Exists(f.Path) {
+			continue
+		}
+		// A placeholder beside the repo's real design doc would hide it;
+		// docs.required-files reports the move instead.
+		if f.Path == "DESIGN.md" && len(misnamed) > 0 {
+			fmt.Fprintf(stdout, "skipped DESIGN.md: move %s there\n", strings.Join(misnamed, ", "))
 			continue
 		}
 		if err := r.Write(f.Path, f.Data); err != nil {

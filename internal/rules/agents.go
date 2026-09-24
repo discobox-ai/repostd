@@ -2,6 +2,7 @@ package rules
 
 import (
 	"bytes"
+	"strings"
 
 	"github.com/discobox-ai/repostd/internal/managed"
 	"github.com/discobox-ai/repostd/internal/repo"
@@ -51,6 +52,10 @@ var lintRules = []Rule{
 			for _, f := range want {
 				if f.Path == managed.ADRReadme {
 					continue // adr.index reports it.
+				}
+				if dropped := managed.Dropped(r); f.Path == managed.GolangciPath && len(dropped) > 0 {
+					out = append(out, issue(f.Path, "local blocks %s are no longer in the standard, and sync will not drop their lines; move them into a remaining local block", strings.Join(dropped, ", ")))
+					continue
 				}
 				got, ok := r.Read(f.Path)
 				switch {

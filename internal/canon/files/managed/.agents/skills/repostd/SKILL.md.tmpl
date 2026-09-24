@@ -124,8 +124,9 @@ inside a git repository, `$RC` says so; stop and tell the user.
   Libraries, Git Workflow, Commands, Implementation Quality, Package Design
   Docs, Architecture Decision Records. `docs.agents-sections`
 - Required files: `README.md` (user-facing), `DESIGN.md`, `LICENSE`
-  (Apache-2.0), `NOTICE` and `SECURITY.md`. `docs.required-files`,
-  `docs.license`
+  (Apache-2.0), `NOTICE` and `SECURITY.md`. A design doc is always named
+  `DESIGN.md`: move a `docs/design.md` to the root rather than keeping two.
+  `docs.required-files`, `docs.license`
 - `DESIGN.md` and `REVIEW.md`:
   - They sit next to the code and are read from the root down; closer files
     override their parents.
@@ -254,7 +255,9 @@ CLI repo has no server and skips it.
 ## 6. Lint
 
 - `.golangci.yml` is managed. Repo additions go only inside the
-  `# repostd:local` blocks. `managed.files`
+  `# repostd:local` blocks. When the standard drops a block that still has
+  lines, `sync` leaves the file alone and fails: move the lines into a
+  remaining block. `managed.files`
 - It bans testify with depguard, and `nolintlint` requires every `nolint` to
   be specific and explained.
 

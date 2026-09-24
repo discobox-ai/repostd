@@ -6,7 +6,9 @@ package managed
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/discobox-ai/repostd/internal/adr"
@@ -84,6 +86,22 @@ func MergeLocal(canonical, current []byte) []byte {
 	return b.Bytes()
 }
 
+// Dropped returns the names of r's non-empty .golangci.yml local blocks that
+// the standard no longer has, sorted. Sync refuses to drop their content.
+func Dropped(r *repo.Repo) []string {
+	current, _ := r.Read(GolangciPath)
+	f, _ := canon.ManagedFile(GolangciPath)
+	want := LocalBlocks(f.Data)
+	var out []string
+	for name, body := range LocalBlocks(current) {
+		if _, ok := want[name]; !ok && strings.TrimSpace(body) != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // LocalBlocks returns the body of each named local block in data.
 func LocalBlocks(data []byte) map[string]string {
 	out := map[string]string{}
@@ -132,14 +150,20 @@ func splitLines(data []byte) []string {
 }
 
 // Sync writes every managed file that differs, and creates the standard's
-// symlinks that are missing. It returns the paths it changed.
+// symlinks that are missing. It returns the paths it changed. It leaves
+// .golangci.yml alone, and fails, while a local block the standard dropped
+// still has content.
 func Sync(r *repo.Repo) ([]string, error) {
 	want, err := Expected(r)
 	if err != nil {
 		return nil, err
 	}
+	dropped := Dropped(r)
 	var changed []string
 	for _, f := range want {
+		if f.Path == GolangciPath && len(dropped) > 0 {
+			continue
+		}
 		if got, ok := r.Read(f.Path); ok && bytes.Equal(got, f.Data) {
 			continue
 		}
@@ -156,6 +180,9 @@ func Sync(r *repo.Repo) ([]string, error) {
 			return changed, err
 		}
 		changed = append(changed, s.Path)
+	}
+	if len(dropped) > 0 {
+		return changed, fmt.Errorf("%s not synced: local blocks %s are no longer in the standard; move their lines into a remaining local block, then sync", GolangciPath, strings.Join(dropped, ", "))
 	}
 	return changed, nil
 }
