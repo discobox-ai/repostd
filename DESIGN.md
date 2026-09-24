@@ -28,12 +28,16 @@ flowchart LR
   `docs/adr/template.md`, and the skill.
   `sync` rewrites them, and `managed.files` fails on drift. The only
   repo-owned content is `.golangci.yml`'s `# repostd:local <name>` blocks,
-  which sync carries over by name.
+  which sync carries over by name. Sync never drops a block's lines: when
+  the standard removes a block that still has content, sync skips the file
+  and fails, and `managed.files` reports it.
 - The **ADR index** in `docs/adr/README.md` is managed content inside a
   repo-owned file, between `repostd:adr-index` markers.
 - **Starter** files are written by `init` only when missing, rendered with
   `[[ ]]` template delimiters (Taskfiles and workflows own `{{ }}`), and
   owned by the repo afterwards. Rules check their shape, not their bytes.
+  `init` does not write a placeholder that would hide the repo's own
+  version of a file, such as `DESIGN.md` beside a `docs/design.md`.
 - Every embedded file has a `.tmpl` suffix, so git, direnv, and repocheck do
   not treat repostd's templates as repostd's own files.
 - repostd conforms to itself: its root copies of managed files come from

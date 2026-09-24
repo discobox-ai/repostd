@@ -93,13 +93,21 @@ var docsRules = []Rule{
 	},
 	{
 		ID:      "docs.required-files",
-		Summary: "README.md, DESIGN.md, LICENSE, NOTICE, and SECURITY.md exist.",
+		Summary: "README.md, DESIGN.md, LICENSE, NOTICE, and SECURITY.md exist; design docs are named DESIGN.md.",
 		Check: func(r *repo.Repo) []Issue {
+			misnamed := MisnamedDesignDocs(r)
 			var out []Issue
 			for _, f := range requiredDocs {
-				if !r.Has(f) {
+				switch {
+				case r.Has(f):
+				case f == "DESIGN.md" && len(misnamed) > 0:
+					out = append(out, issue(f, "missing DESIGN.md; the repo's design doc is %s: move it here", strings.Join(misnamed, ", ")))
+				default:
 					out = append(out, issue(f, "missing %s", f))
 				}
+			}
+			for _, f := range misnamed {
+				out = append(out, issue(f, "a design doc is named DESIGN.md and sits next to the code it describes (the root for the whole repo)"))
 			}
 			return out
 		},
@@ -175,6 +183,18 @@ var docsRules = []Rule{
 			return out
 		},
 	},
+}
+
+// MisnamedDesignDocs returns the files named design.md in any case but
+// DESIGN.md's, such as docs/design.md.
+func MisnamedDesignDocs(r *repo.Repo) []string {
+	var out []string
+	for _, f := range r.Files {
+		if b := path.Base(f); b != "DESIGN.md" && strings.EqualFold(b, "DESIGN.md") {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func sortedKeys(m map[string]bool) []string {

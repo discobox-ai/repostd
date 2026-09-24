@@ -129,6 +129,7 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a regular CLAUDE.md", remove: []string{"CLAUDE.md"}, files: map[string]string{"CLAUDE.md": "# hi\n"}, want: "docs.agents-symlink"},
 		{name: "an AGENTS.md without its sections", files: map[string]string{"AGENTS.md": "# Repository Guidelines\n"}, want: "docs.agents-sections"},
 		{name: "no SECURITY.md", remove: []string{"SECURITY.md"}, want: "docs.required-files"},
+		{name: "a design doc in docs/", remove: []string{"DESIGN.md"}, files: map[string]string{"docs/design.md": "# design\n"}, want: "docs.required-files"},
 		{name: "a non-Apache LICENSE", files: map[string]string{"LICENSE": "MIT License\n"}, want: "docs.license"},
 		{name: "a REVIEW.md without a DESIGN.md", files: map[string]string{"internal/x/REVIEW.md": "- rule\n"}, want: "docs.review-design"},
 		{name: "a 700-line DESIGN.md", files: map[string]string{"DESIGN.md": strings.Repeat("line\n", 700)}, want: "docs.design-length"},
@@ -150,6 +151,7 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a Taskfile without ci", files: map[string]string{"Taskfile.yml": "version: \"3\"\ntasks:\n  build: {cmds: [go build]}\n"}, want: "env.taskfile-targets"},
 		{name: "tests without -race", files: map[string]string{"Taskfile.yml": starterWith(t, "Taskfile.yml", "{{.RACE}} ", "")}, want: "env.test-race"},
 		{name: "a hand-edited golangci config", files: map[string]string{".golangci.yml": "version: \"2\"\n"}, want: "managed.files"},
+		{name: "a golangci local block the standard dropped", files: map[string]string{".golangci.yml": golangciWith(t, "# repostd:local gone\n    - gocritic\n# repostd:end\n")}, want: "managed.files"},
 		{name: "testify in go.mod", files: map[string]string{"go.mod": goMod + "\nrequire github.com/stretchr/testify v1.10.0\n"}, want: "tests.no-testify"},
 		{name: "an integration build tag", files: map[string]string{"internal/x/x_test.go": "//go:build integration\n\npackage x\n"}, want: "tests.no-integration-tags"},
 		{name: "a test env var no test reads", files: map[string]string{"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  test:e2e:\n    env: {EXAMPLE_E2E: \"1\"}\n    cmds: [go test ./...]\n\n  test:\n")}, want: "tests.env-read"},
@@ -237,6 +239,30 @@ func starterWith(t *testing.T, p, old, replacement string) string {
 	}
 	t.Fatalf("no starter file %s", p)
 	return ""
+}
+
+func TestSyncKeepsAGolangciBlockTheStandardDropped(t *testing.T) {
+	dir := conforming(t)
+	edited := golangciWith(t, "# repostd:local gone\n    - gocritic\n# repostd:end\n")
+	write(t, dir, ".golangci.yml", edited)
+
+	_, err := managed.Sync(load(t, dir))
+	if err == nil || !strings.Contains(err.Error(), "gone") {
+		t.Errorf("Sync error = %v, want one naming block gone", err)
+	}
+	if got, _ := load(t, dir).Read(".golangci.yml"); string(got) != edited {
+		t.Errorf("Sync rewrote .golangci.yml and dropped the block:\n%s", got)
+	}
+}
+
+// golangciWith returns the managed .golangci.yml with extra appended.
+func golangciWith(t *testing.T, extra string) string {
+	t.Helper()
+	f, ok := canon.ManagedFile(".golangci.yml")
+	if !ok {
+		t.Fatal("no managed .golangci.yml")
+	}
+	return string(f.Data) + extra
 }
 
 func TestAWaiverSilencesOnlyItsRuleAndPath(t *testing.T) {
