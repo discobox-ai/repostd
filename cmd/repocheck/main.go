@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -63,7 +64,11 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 
 	if cmd == "rules" {
 		for _, r := range rules.All() {
-			fmt.Fprintf(stdout, "%-28s %s\n", r.ID, r.Summary)
+			var scope strings.Builder
+			for _, s := range r.Stacks {
+				fmt.Fprintf(&scope, "[%s] ", s)
+			}
+			fmt.Fprintf(stdout, "%-28s %s%s\n", r.ID, scope.String(), r.Summary)
 		}
 		return nil
 	}
@@ -121,10 +126,11 @@ func sync(r *repo.Repo, stdout io.Writer) error {
 }
 
 func initRepo(ctx context.Context, r *repo.Repo, stdout io.Writer) error {
-	// Starter files carry the module path, so a repo without go.mod would
-	// bake the directory name into the Taskfile and AGENTS.md.
-	if r.Mod == nil {
-		return fmt.Errorf("no go.mod in %s; run `go mod init github.com/discobox-ai/%s` first", r.Root, r.Name())
+	// Starter files carry the module path or package name, so a repo with
+	// neither manifest would bake the directory name into them. A node repo
+	// is one with a package.json and no go.mod (ADR 0002).
+	if r.Mod == nil && r.Package == nil {
+		return fmt.Errorf("no go.mod or package.json in %s; run `go mod init github.com/discobox-ai/%s` for a Go repo, or `pnpm init` for a node one, first", r.Root, r.Name())
 	}
 	starter, err := starterFiles(r)
 	if err != nil {
@@ -180,5 +186,21 @@ func starterFiles(r *repo.Repo) ([]canon.File, error) {
 	if r.Mod != nil && r.Mod.Module != nil {
 		module = r.Mod.Module.Mod.Path
 	}
-	return canon.Starter(canon.Vars{Module: module, Name: r.Name(), Year: time.Now().Year()})
+	return canon.Starter(r.Stack, canon.Vars{Module: module, Name: r.Name(), Year: time.Now().Year(), RepocheckVersion: repocheckVersion()})
+}
+
+// repocheckVersion is the version of this repocheck as `go run` takes it,
+// for a node repo's CI to pin: the module version it was built at, or main
+// for a build from a checkout. A build from a dirty tree is stamped with
+// "+dirty", which no proxy serves, so it is main too.
+func repocheckVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "main"
+	}
+	v := info.Main.Version
+	if v == "" || v == "(devel)" || strings.HasSuffix(v, "+dirty") {
+		return "main"
+	}
+	return v
 }

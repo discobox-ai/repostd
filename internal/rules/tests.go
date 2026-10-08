@@ -22,6 +22,7 @@ var (
 var testsRules = []Rule{
 	{
 		ID:      "tests.no-testify",
+		Stacks:  goOnly,
 		Summary: "Tests use the standard testing package; testify is banned.",
 		Check: func(r *repo.Repo) []Issue {
 			if r.Mod == nil {
@@ -37,6 +38,7 @@ var testsRules = []Rule{
 	},
 	{
 		ID:      "tests.no-integration-tags",
+		Stacks:  goOnly,
 		Summary: "Integration and e2e tests skip on an env var instead of using build tags.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -55,6 +57,7 @@ var testsRules = []Rule{
 	},
 	{
 		ID:      "tests.env-read",
+		Stacks:  goOnly,
 		Summary: "Every *_INTEGRATION or *_E2E variable the Taskfile sets is read by a test.",
 		Check: func(r *repo.Repo) []Issue {
 			data, ok := r.Read("Taskfile.yml")

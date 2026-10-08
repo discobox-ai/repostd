@@ -37,7 +37,7 @@ func conforming(t *testing.T) string {
 	write(t, dir, "cmd/example/main.go", "package main\n\nfunc main() {}\n")
 
 	r := load(t, dir)
-	starter, err := canon.Starter(canon.Vars{Module: "github.com/discobox-ai/example", Name: "example", Year: 2026})
+	starter, err := canon.Starter(repo.Go, canon.Vars{Module: "github.com/discobox-ai/example", Name: "example", Year: 2026})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 // starterWith returns the starter file p with the first old replaced by new.
 func starterWith(t *testing.T, p, old, replacement string) string {
 	t.Helper()
-	files, err := canon.Starter(canon.Vars{Module: "github.com/discobox-ai/example", Name: "example", Year: 2026})
+	files, err := canon.Starter(repo.Go, canon.Vars{Module: "github.com/discobox-ai/example", Name: "example", Year: 2026})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestSyncKeepsAGolangciBlockTheStandardDropped(t *testing.T) {
 // golangciWith returns the managed .golangci.yml with extra appended.
 func golangciWith(t *testing.T, extra string) string {
 	t.Helper()
-	f, ok := canon.ManagedFile(".golangci.yml")
+	f, ok := canon.ManagedFile(repo.Go, ".golangci.yml")
 	if !ok {
 		t.Fatal("no managed .golangci.yml")
 	}
@@ -293,7 +293,7 @@ func TestAWaiverWithoutAReasonIsRejected(t *testing.T) {
 var citedRE = regexp.MustCompile("`((?:layout|docs|adr|agents|env|config|discobox|managed|tests|ci|git)\\.[a-z-]+)`")
 
 func TestTheSkillCitesExactlyTheRulesThatExist(t *testing.T) {
-	skill, ok := canon.ManagedFile(".agents/skills/repostd/SKILL.md")
+	skill, ok := canon.ManagedFile(repo.Go, ".agents/skills/repostd/SKILL.md")
 	if !ok {
 		t.Fatal("no managed skill")
 	}

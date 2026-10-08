@@ -1,0 +1,29 @@
+# Managed by repostd (go tool repocheck sync).
+#
+# The whole GitHub Actions layer of a node repo: install pnpm and node from
+# the versions package.json pins (packageManager, devEngines.runtime) and the
+# dependencies from the lockfile, then run one package.json script. What a
+# script does lives in package.json and runs the same way in a terminal. Jobs
+# run actions/checkout first, because a local action resolves only once the
+# repo is on disk.
+name: pnpm
+description: Run one package.json script with the pnpm and node that package.json pins.
+
+inputs:
+  script:
+    description: The package.json script to run.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Depot runners back the Actions cache API with Depot Cache, so the
+    # action's own store cache is already the fast path.
+    - name: Install pnpm, node, and the dependencies
+      uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+      with:
+        cache: true
+
+    - name: pnpm run ${{ inputs.script }}
+      shell: bash
+      run: pnpm run ${{ inputs.script }}

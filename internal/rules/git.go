@@ -6,9 +6,12 @@ import (
 	"github.com/discobox-ai/repostd/internal/repo"
 )
 
-// ignoredPaths are the patterns .gitignore covers, normalized by
-// normalizeIgnore.
-var ignoredPaths = []string{"build", ".direnv", ".env", "result"}
+// ignoredPaths are the patterns .gitignore covers on each stack, normalized
+// by normalizeIgnore.
+var ignoredPaths = map[repo.Stack][]string{
+	repo.Go:   {"build", ".direnv", ".env", "result"},
+	repo.Node: {"node_modules", ".env"},
+}
 
 var gitRules = []Rule{
 	{
@@ -34,7 +37,7 @@ var gitRules = []Rule{
 	},
 	{
 		ID:      "git.ignore",
-		Summary: ".gitignore covers build/, .direnv/, .env, and result.",
+		Summary: ".gitignore covers build/, .direnv/, .env, and result; a node repo's covers node_modules/ and .env.",
 		Check: func(r *repo.Repo) []Issue {
 			data, ok := r.Read(".gitignore")
 			if !ok {
@@ -45,7 +48,7 @@ var gitRules = []Rule{
 				have[normalizeIgnore(l)] = true
 			}
 			var out []Issue
-			for _, p := range ignoredPaths {
+			for _, p := range ignoredPaths[r.Stack] {
 				if !have[p] {
 					out = append(out, issue(".gitignore", "does not ignore %s", p))
 				}

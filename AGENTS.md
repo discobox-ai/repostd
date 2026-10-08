@@ -7,9 +7,10 @@
 - The root holds only top-level containers (`cmd`, `pkg`, `internal`, `docs`,
   `test`, `scripts`), never packages.
 - `cmd/repocheck`: the `repocheck` binary (check, sync, init, rules).
-- `internal/canon`: the embedded files the standard distributes. The
-  standard itself is `files/managed/.agents/skills/repostd/SKILL.md.tmpl`.
-  Every embedded file has a `.tmpl` suffix.
+- `internal/canon`: the embedded files the standard distributes, under
+  `files/<managed|starter>/<common|go|node>`. The standard itself is
+  `files/managed/common/.agents/skills/repostd/SKILL.md.tmpl`. Every
+  embedded file has a `.tmpl` suffix.
 - `internal/rules`: one `Rule` per rule ID the skill cites.
 - `internal/managed`: expected managed content, and `Sync`.
 - `internal/adr`: ADR parsing and the generated index.

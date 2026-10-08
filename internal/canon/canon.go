@@ -3,6 +3,9 @@
 // Managed files are owned by repostd: repocheck sync rewrites them and
 // repocheck reports any drift. Starter files are written once by repocheck
 // init, rendered with the repo's name, and owned by the repo afterwards.
+//
+// Both are split by stack (ADR 0002): files/<kind>/common is every repo's,
+// and files/<kind>/go and files/<kind>/node are added for that stack.
 package canon
 
 import (
@@ -13,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+
+	"github.com/discobox-ai/repostd/internal/repo"
 )
 
 //go:embed all:files
@@ -32,12 +37,16 @@ type Symlink struct {
 
 // Vars are the values starter templates are rendered with.
 type Vars struct {
-	// Module is the Go module path.
+	// Module is the Go module path; a node repo's is its name.
 	Module string
-	// Name is the repo and binary name: the module path's last element.
+	// Name is the repo and binary name: the module path's last element, or
+	// a node repo's package name.
 	Name string
 	// Year is the copyright year.
 	Year int
+	// RepocheckVersion is the repocheck a node repo's CI runs: the version
+	// of the repocheck writing the file, or main when it has none.
+	RepocheckVersion string
 }
 
 // Symlinks are the symlinks every repo has.
@@ -46,14 +55,14 @@ var Symlinks = []Symlink{
 	{Path: ".claude/skills", Target: "../.agents/skills"},
 }
 
-// Managed returns the managed files, sorted by path.
-func Managed() []File {
-	return load("files/managed")
+// Managed returns the managed files a repo on stack has, sorted by path.
+func Managed(stack repo.Stack) []File {
+	return forStack("files/managed", stack)
 }
 
-// ManagedFile returns the managed file at p.
-func ManagedFile(p string) (File, bool) {
-	for _, f := range Managed() {
+// ManagedFile returns the managed file at p for stack.
+func ManagedFile(stack repo.Stack, p string) (File, bool) {
+	for _, f := range Managed(stack) {
 		if f.Path == p {
 			return f, true
 		}
@@ -61,9 +70,10 @@ func ManagedFile(p string) (File, bool) {
 	return File{}, false
 }
 
-// Starter returns the starter files rendered with v, sorted by path.
-func Starter(v Vars) ([]File, error) {
-	raw := load("files/starter")
+// Starter returns the starter files for stack rendered with v, sorted by
+// path.
+func Starter(stack repo.Stack, v Vars) ([]File, error) {
+	raw := forStack("files/starter", stack)
 	out := make([]File, 0, len(raw))
 	for _, f := range raw {
 		// "[[ ]]" delimiters, because Taskfiles and workflows are full of
@@ -79,6 +89,13 @@ func Starter(v Vars) ([]File, error) {
 		out = append(out, File{Path: f.Path, Data: b.Bytes()})
 	}
 	return out, nil
+}
+
+// forStack returns kind's common files and stack's, sorted by path.
+func forStack(kind string, stack repo.Stack) []File {
+	out := append(load(kind+"/common"), load(kind+"/"+string(stack))...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 func load(root string) []File {

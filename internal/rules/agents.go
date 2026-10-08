@@ -42,7 +42,7 @@ var agentsRules = []Rule{
 var lintRules = []Rule{
 	{
 		ID:      "managed.files",
-		Summary: "Managed files match repostd (.golangci.yml outside its local blocks).",
+		Summary: "Managed files match repostd (.golangci.yml and oxfmt.config.ts outside their local blocks).",
 		Check: func(r *repo.Repo) []Issue {
 			want, err := managed.Expected(r)
 			if err != nil {
@@ -53,7 +53,7 @@ var lintRules = []Rule{
 				if f.Path == managed.ADRReadme {
 					continue // adr.index reports it.
 				}
-				if dropped := managed.Dropped(r); f.Path == managed.GolangciPath && len(dropped) > 0 {
+				if dropped := managed.Dropped(r, f.Path); len(dropped) > 0 {
 					out = append(out, issue(f.Path, "local blocks %s are no longer in the standard, and sync will not drop their lines; move them into a remaining local block", strings.Join(dropped, ", ")))
 					continue
 				}

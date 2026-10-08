@@ -18,6 +18,13 @@ const (
 	ciWorkflow      = ".github/workflows/ci.yml"
 	releaseWorkflow = ".github/workflows/release.yml"
 	taskAction      = "./.github/actions/task"
+	// pnpmAction runs one package.json script, and repocheckAction runs
+	// repocheck, in a node repo (ADR 0002).
+	pnpmAction      = "./.github/actions/pnpm"
+	repocheckAction = "./.github/actions/repocheck"
+	// RepocheckJob is the node CI job that runs repocheck, the one job that
+	// needs Go.
+	RepocheckJob = "repocheck"
 	// RenovatePreset is the shared Renovate preset every repo extends.
 	RenovatePreset = "github>discobox-ai/repostd"
 )
@@ -26,10 +33,13 @@ const (
 var CIJobs = []string{"verify", "check", "test"}
 
 var (
-	usesRE      = regexp.MustCompile(`^\s*(?:-\s+)?uses:\s*["']?([^\s"'#]+)["']?\s*(?:#\s*(\S+))?`)
-	pinnedRE    = regexp.MustCompile(`@[0-9a-f]{40}$`)
-	versionRE   = regexp.MustCompile(`^v\d+(\.\d+)*$`)
-	runStepRE   = regexp.MustCompile(`^(nix develop -c )?go tool task [A-Za-z0-9:_.-]+( .*)?$`)
+	usesRE    = regexp.MustCompile(`^\s*(?:-\s+)?uses:\s*["']?([^\s"'#]+)["']?\s*(?:#\s*(\S+))?`)
+	pinnedRE  = regexp.MustCompile(`@[0-9a-f]{40}$`)
+	versionRE = regexp.MustCompile(`^v\d+(\.\d+)*$`)
+	runStepRE = map[repo.Stack]*regexp.Regexp{
+		repo.Go:   regexp.MustCompile(`^(?:nix develop -c )?go tool task ([A-Za-z0-9:_.-]+)(?: .*)?$`),
+		repo.Node: regexp.MustCompile(`^pnpm run ([A-Za-z0-9:_.-]+)(?: .*)?$`),
+	}
 	matrixRefRE = regexp.MustCompile(`^\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}$`)
 )
 
@@ -63,7 +73,7 @@ func (s step) action() string {
 var ciRules = []Rule{
 	{
 		ID:      "ci.workflow",
-		Summary: "ci.yml runs verify, check, and test through the task action on PRs and pushes to main.",
+		Summary: "ci.yml runs verify, check, and test through the task action, or a node repo's pnpm action and a repocheck job, on PRs and pushes to main.",
 		Check: func(r *repo.Repo) []Issue {
 			w, err := loadWorkflow(r, ciWorkflow)
 			if err != nil {
@@ -77,14 +87,24 @@ var ciRules = []Rule{
 			if !pushesMain(&w.On) {
 				out = append(out, issue(ciWorkflow, "does not run on push to main"))
 			}
+			action, input := taskAction, "target"
+			if r.Stack == repo.Node {
+				action, input = pnpmAction, "script"
+			}
 			for _, name := range CIJobs {
 				j, ok := w.Jobs[name]
 				if !ok {
 					out = append(out, issue(ciWorkflow, "missing job %q", name))
 					continue
 				}
-				if !runsTarget(j, name) {
-					out = append(out, issue(ciWorkflow, "job %q does not run %s with target %q", name, taskAction, name))
+				if !runsTarget(r.Stack, j, name) {
+					out = append(out, issue(ciWorkflow, "job %q does not run %s with %s %q", name, action, input, name))
+				}
+			}
+			if r.Stack == repo.Node {
+				j, ok := w.Jobs[RepocheckJob]
+				if !ok || !slices.ContainsFunc(j.Steps, func(s step) bool { return s.Uses == repocheckAction }) {
+					out = append(out, issue(ciWorkflow, "no %q job running %s", RepocheckJob, repocheckAction))
 				}
 			}
 			return out
@@ -114,9 +134,18 @@ var ciRules = []Rule{
 	},
 	{
 		ID:      "ci.no-setup",
-		Summary: "No actions/setup-*; only a depot-windows job may use actions/setup-go with go-version-file: go.mod.",
+		Summary: "No actions/setup-*; only a Go repo's depot-windows job may use actions/setup-go with go-version-file: go.mod.",
 		Check: func(r *repo.Repo) []Issue {
 			return eachJob(r, func(p, name string, j job) []Issue {
+				if r.Stack == repo.Node {
+					var out []Issue
+					for _, s := range j.Steps {
+						if a := s.action(); strings.HasPrefix(a, "actions/setup-") {
+							out = append(out, issue(p, "job %q uses %s; the managed pnpm and repocheck actions install the toolchain", name, a))
+						}
+					}
+					return out
+				}
 				labels, _ := runnerLabels(j)
 				windows := len(labels) > 0
 				for _, l := range labels {
@@ -143,7 +172,7 @@ var ciRules = []Rule{
 	},
 	{
 		ID:      "ci.run-steps",
-		Summary: "Every workflow run: step is one `[nix develop -c] go tool task <target>`.",
+		Summary: "Every workflow run: step is one `[nix develop -c] go tool task <target>`, or a node repo's `pnpm run <script>`.",
 		Check: func(r *repo.Repo) []Issue {
 			return eachJob(r, func(p, name string, j job) []Issue {
 				var out []Issue
@@ -151,8 +180,8 @@ var ciRules = []Rule{
 					if s.Run == "" {
 						continue
 					}
-					if !runStepRE.MatchString(strings.TrimSpace(s.Run)) {
-						out = append(out, issue(p, "job %q: run step %q is not a single task invocation; move the logic into Taskfile.yml", name, firstLine(s.Run)))
+					if !runStepRE[r.Stack].MatchString(strings.TrimSpace(s.Run)) {
+						out = append(out, issue(p, "job %q: run step %q is not a single `%s`; move the logic into %s", name, firstLine(s.Run), runTarget(r.Stack, "<target>"), targetHome(r.Stack)))
 					}
 				}
 				return out
@@ -176,7 +205,7 @@ var ciRules = []Rule{
 			}
 			for _, name := range sortedJobs(w) {
 				for _, s := range w.Jobs[name].Steps {
-					if target := taskTarget(s); target != "" && !strings.HasPrefix(target, "release:") {
+					if target := stepTarget(r.Stack, s); target != "" && !strings.HasPrefix(target, "release:") {
 						out = append(out, issue(releaseWorkflow, "job %q runs %q; release runs release:* targets only", name, target))
 					}
 				}
@@ -435,25 +464,28 @@ func pushesTag(on *yaml.Node) bool {
 	return false
 }
 
-// runsTarget reports whether the job runs target through the task action.
-func runsTarget(j job, target string) bool {
+// runsTarget reports whether the job runs target through its stack's
+// action.
+func runsTarget(stack repo.Stack, j job, target string) bool {
 	for _, s := range j.Steps {
-		if taskTarget(s) == target {
+		if stepTarget(stack, s) == target {
 			return true
 		}
 	}
 	return false
 }
 
-// taskTarget returns the Taskfile target a step runs, via the task action or
-// a run: step, or "".
-func taskTarget(s step) string {
-	if s.Uses == taskAction {
+// stepTarget returns the Taskfile target or package.json script a step runs,
+// via the stack's action or a run: step, or "".
+func stepTarget(stack repo.Stack, s step) string {
+	switch {
+	case stack == repo.Go && s.Uses == taskAction:
 		return fmt.Sprint(s.With["target"])
+	case stack == repo.Node && s.Uses == pnpmAction:
+		return fmt.Sprint(s.With["script"])
 	}
-	if m := runStepRE.FindStringSubmatch(strings.TrimSpace(s.Run)); m != nil {
-		fields := strings.Fields(strings.TrimPrefix(strings.TrimSpace(s.Run), "nix develop -c "))
-		return fields[3]
+	if m := runStepRE[stack].FindStringSubmatch(strings.TrimSpace(s.Run)); m != nil {
+		return m[1]
 	}
 	return ""
 }

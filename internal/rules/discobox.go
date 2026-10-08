@@ -15,8 +15,8 @@ const (
 )
 
 // directTooling matches a build, test or lint tool run straight from a hook,
-// which is the drift the Taskfile exists to prevent.
-var directTooling = regexp.MustCompile(`(?m)^\s*(?:go (?:build|test|generate|vet|run)\b|gofmt\b|golangci-lint\b|shellcheck\b|actionlint\b)`)
+// which is the drift the Taskfile, or a node repo's scripts, exist to prevent.
+var directTooling = regexp.MustCompile(`(?m)^\s*(?:go (?:build|test|generate|vet|run)\b|gofmt\b|golangci-lint\b|shellcheck\b|actionlint\b|(?:npx|pnpm exec|pnpm dlx)\s|oxlint\b|oxfmt\b|eslint\b|prettier\b|tsc\b|vitest\b|jest\b|node --test\b|remix (?:test|doctor)\b)`)
 
 // frontmatter is the "#---" header a hook or service declares itself with.
 var frontmatterRE = regexp.MustCompile(`(?m)^#---\s*$`)
@@ -27,7 +27,7 @@ var heredocRE = regexp.MustCompile(`<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?`)
 var discoboxRules = []Rule{
 	{
 		ID:      "discobox.hooks",
-		Summary: "Hooks declare themselves and invoke Taskfile targets, never tooling directly.",
+		Summary: "Hooks declare themselves and invoke Taskfile targets or package.json scripts, never tooling directly.",
 		Check: func(r *repo.Repo) []Issue {
 			hooks := scripts(r, HooksDir)
 			if len(hooks) == 0 {
@@ -41,7 +41,7 @@ var discoboxRules = []Rule{
 					out = append(out, issue(f, "no `#---` frontmatter declaring at least `name:`"))
 				}
 				if m := directTooling.FindString(stripHeredocs(body)); m != "" {
-					out = append(out, issue(f, "runs %q directly; a hook is a thin trigger for `go tool task <target>`", strings.TrimSpace(m)))
+					out = append(out, issue(f, "runs %q directly; a hook is a thin trigger for `%s`", strings.TrimSpace(m), runTarget(r.Stack, "<target>")))
 				}
 			}
 			return out
@@ -49,22 +49,19 @@ var discoboxRules = []Rule{
 	},
 	{
 		ID:      "discobox.dev-service",
-		Summary: "Where there is a dev target, a discobox service starts it.",
+		Summary: "Where there is a dev target or script, a discobox service starts it.",
 		Check: func(r *repo.Repo) []Issue {
-			tasks, _, err := taskfile(r)
-			if err != nil {
-				return nil // env.taskfile-targets reports it.
-			}
-			if _, ok := tasks["dev"]; !ok {
+			if !hasDev(r) {
 				return nil
 			}
+			run := runTarget(r.Stack, "dev")
 			for _, f := range scripts(r, ServicesDir) {
 				data, _ := r.Read(f)
-				if strings.Contains(string(data), "go tool task dev") {
+				if strings.Contains(string(data), run) {
 					return nil
 				}
 			}
-			return []Issue{issue(ServicesDir, "no service runs `go tool task dev`, so the dev loop does not start in a discobox")}
+			return []Issue{issue(ServicesDir, "no service runs `%s`, so the dev loop does not start in a discobox", run)}
 		},
 	},
 	{
@@ -83,6 +80,36 @@ var discoboxRules = []Rule{
 			return out
 		},
 	},
+}
+
+// hasDev reports whether the repo has a dev target (Go) or script (node).
+func hasDev(r *repo.Repo) bool {
+	if r.Stack == repo.Node {
+		_, ok := r.Package.Scripts["dev"]
+		return ok
+	}
+	tasks, _, err := taskfile(r)
+	if err != nil {
+		return false // env.taskfile-targets reports it.
+	}
+	_, ok := tasks["dev"]
+	return ok
+}
+
+// runTarget is how a hook, service or CI step runs target on stack.
+func runTarget(stack repo.Stack, target string) string {
+	if stack == repo.Node {
+		return "pnpm run " + target
+	}
+	return "go tool task " + target
+}
+
+// targetHome is where a stack's targets are defined.
+func targetHome(stack repo.Stack) string {
+	if stack == repo.Node {
+		return "package.json scripts"
+	}
+	return "Taskfile.yml"
 }
 
 // declares reports whether a script has the "#---" frontmatter block.

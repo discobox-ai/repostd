@@ -35,3 +35,14 @@ func mapKeys(m map[string]string) []string {
 	}
 	return out
 }
+
+// A JavaScript config marks its local blocks with "//" comments, the same
+// way a YAML one does with "#".
+func TestMergeLocalReadsJavaScriptCommentMarkers(t *testing.T) {
+	canonical := "export default [\n  // repostd:local config\n  // repostd:end\n]\n"
+	current := "export default [\n  // repostd:local config\n  { rules: { eqeqeq: 'error' } },\n  // repostd:end\n]\n"
+	got := string(managed.MergeLocal([]byte(canonical), []byte(current)))
+	if got != current {
+		t.Errorf("MergeLocal =\n%s\nwant\n%s", got, current)
+	}
+}

@@ -1,0 +1,34 @@
+# Managed by repostd (go tool repocheck sync).
+#
+# repocheck and actionlint are Go programs, so this is the one place a node
+# repo's CI uses Go (ADR 0002): it checks the repo against the standard and
+# lints the workflows. Jobs run actions/checkout first.
+name: repocheck
+description: Check the repository against the discobox-ai standard, and lint its workflows.
+
+inputs:
+  version:
+    description: The repocheck version to run, as `go run` takes it.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: stable
+        cache: false
+
+    - name: repocheck
+      shell: bash
+      env:
+        GOTOOLCHAIN: auto
+        VERSION: ${{ inputs.version }}
+      run: go run "github.com/discobox-ai/repostd/cmd/repocheck@${VERSION}"
+
+    - name: actionlint
+      shell: bash
+      env:
+        GOTOOLCHAIN: auto
+      run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12

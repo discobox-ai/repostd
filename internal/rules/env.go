@@ -36,6 +36,7 @@ var flakeGoTools = regexp.MustCompile(`\bpkgs\.(go-task|golangci-lint|ogen|gopls
 var envRules = []Rule{
 	{
 		ID:      "env.flake",
+		Stacks:  goOnly,
 		Summary: "flake.nix and flake.lock exist.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -49,6 +50,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.envrc",
+		Stacks:  goOnly,
 		Summary: ".envrc uses the flake.",
 		Check: func(r *repo.Repo) []Issue {
 			data, ok := r.Read(".envrc")
@@ -65,6 +67,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.go-tools",
+		Stacks:  goOnly,
 		Summary: "go.mod pins task, golangci-lint, and repocheck as tool directives.",
 		Check: func(r *repo.Repo) []Issue {
 			if r.Mod == nil {
@@ -85,6 +88,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.flake-go-tools",
+		Stacks:  goOnly,
 		Summary: "The flake does not also pin Go tools that go.mod pins.",
 		Check: func(r *repo.Repo) []Issue {
 			data, ok := r.Read("flake.nix")
@@ -100,6 +104,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.taskfile-targets",
+		Stacks:  goOnly,
 		Summary: "Taskfile.yml defines the standard targets and runs repocheck.",
 		Check: func(r *repo.Repo) []Issue {
 			tasks, raw, err := taskfile(r)
@@ -123,6 +128,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.dev-watch",
+		Stacks:  goOnly,
 		Summary: "Where there is a dev target, hot reload is watchnbuild against a .wnb.yaml, and no config is orphaned.",
 		Check: func(r *repo.Repo) []Issue {
 			tasks, raw, err := taskfile(r)
@@ -176,6 +182,7 @@ var envRules = []Rule{
 	},
 	{
 		ID:      "env.test-race",
+		Stacks:  goOnly,
 		Summary: "The test target runs the race detector.",
 		Check: func(r *repo.Repo) []Issue {
 			tasks, raw, err := taskfile(r)

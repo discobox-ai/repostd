@@ -28,6 +28,7 @@ var (
 var configRules = []Rule{
 	{
 		ID:      "config.no-flags",
+		Stacks:  goOnly,
 		Summary: "A server binary takes no configuration flags, only --config, --check-config and --version.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -49,6 +50,7 @@ var configRules = []Rule{
 	},
 	{
 		ID:      "config.schema",
+		Stacks:  goOnly,
 		Summary: "A server commits a generated config schema and example file.",
 		Check: func(r *repo.Repo) []Issue {
 			dirs := serverDirs(r)

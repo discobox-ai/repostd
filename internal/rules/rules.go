@@ -4,6 +4,7 @@ package rules
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/discobox-ai/repostd/internal/repo"
@@ -30,8 +31,22 @@ func (s Severity) String() string {
 type Rule struct {
 	ID      string
 	Summary string
-	Check   func(*repo.Repo) []Issue
+	// Stacks are the stacks the rule applies to; none means every stack
+	// (ADR 0002).
+	Stacks []repo.Stack
+	Check  func(*repo.Repo) []Issue
 }
+
+// AppliesTo reports whether a repo on stack follows the rule.
+func (r Rule) AppliesTo(stack repo.Stack) bool {
+	return len(r.Stacks) == 0 || slices.Contains(r.Stacks, stack)
+}
+
+// Stacks the toolchain rules are scoped to.
+var (
+	goOnly   = []repo.Stack{repo.Go}
+	nodeOnly = []repo.Stack{repo.Node}
+)
 
 // Issue is what a rule reports; Run turns it into a Finding.
 type Issue struct {
@@ -70,7 +85,7 @@ func warning(p, format string, args ...any) Issue {
 // All returns every rule, sorted by ID.
 func All() []Rule {
 	var all []Rule
-	for _, group := range [][]Rule{layoutRules, docsRules, adrRules, agentsRules, envRules, configRules, discoboxRules, lintRules, testsRules, ciRules, gitRules} {
+	for _, group := range [][]Rule{layoutRules, docsRules, adrRules, agentsRules, envRules, nodeRules, configRules, discoboxRules, lintRules, testsRules, ciRules, gitRules} {
 		all = append(all, group...)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
@@ -81,6 +96,9 @@ func All() []Rule {
 func Run(r *repo.Repo) []Finding {
 	var out []Finding
 	for _, rule := range All() {
+		if !rule.AppliesTo(r.Stack) {
+			continue
+		}
 		for _, is := range rule.Check(r) {
 			f := Finding{Rule: rule.ID, Issue: is}
 			f.Waiver, _ = r.Waived(rule.ID, is.Path)

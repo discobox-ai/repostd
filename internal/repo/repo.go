@@ -5,6 +5,7 @@ package repo
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,6 +23,37 @@ import (
 // WaiverFile is the repo-relative path of the waiver file.
 const WaiverFile = ".repocheck.yaml"
 
+// Stack is the toolchain a repo is built with, which decides the toolchain
+// rules it follows (ADR 0002).
+type Stack string
+
+const (
+	// Go is a repo with a go.mod, and a repo with neither manifest yet.
+	Go Stack = "go"
+	// Node is a repo with a package.json and no go.mod.
+	Node Stack = "node"
+)
+
+// Package is the part of a package.json the node rules read.
+type Package struct {
+	Name           string            `json:"name"`
+	PackageManager string            `json:"packageManager"`
+	Scripts        map[string]string `json:"scripts"`
+	DevEngines     struct {
+		Runtime json.RawMessage `json:"runtime"`
+	} `json:"devEngines"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+}
+
+// Depends reports whether the package depends on name, at runtime or for
+// development.
+func (p *Package) Depends(name string) bool {
+	_, dep := p.Dependencies[name]
+	_, dev := p.DevDependencies[name]
+	return dep || dev
+}
+
 // Repo is a repository rooted at Root.
 type Repo struct {
 	Root string
@@ -30,7 +62,12 @@ type Repo struct {
 	// listed as files.
 	Files []string
 	// Mod is the parsed root go.mod, or nil when there is none.
-	Mod     *modfile.File
+	Mod *modfile.File
+	// Package is the parsed root package.json, or nil when there is none.
+	Package *Package
+	// Stack is detected from the manifests: Node for a package.json without
+	// a go.mod, Go otherwise.
+	Stack   Stack
 	Waivers []Waiver
 }
 
@@ -56,6 +93,16 @@ func Load(ctx context.Context, dir string) (*Repo, error) {
 		if r.Mod, err = modfile.Parse("go.mod", data, nil); err != nil {
 			return nil, err
 		}
+	}
+	if data, ok := r.Read("package.json"); ok {
+		r.Package = &Package{}
+		if err := json.Unmarshal(data, r.Package); err != nil {
+			return nil, fmt.Errorf("package.json: %w", err)
+		}
+	}
+	r.Stack = Go
+	if r.Mod == nil && r.Package != nil {
+		r.Stack = Node
 	}
 	if data, ok := r.Read(WaiverFile); ok {
 		var cfg struct {
@@ -112,11 +159,14 @@ func listFiles(ctx context.Context, root string) ([]string, error) {
 	return files, nil
 }
 
-// Name is the repo name: the module path's last element, or the directory
-// name without a go.mod.
+// Name is the repo name: the module path's last element, a node repo's
+// package name without its scope, or the directory name.
 func (r *Repo) Name() string {
 	if r.Mod != nil && r.Mod.Module != nil {
 		return path.Base(r.Mod.Module.Mod.Path)
+	}
+	if r.Stack == Node && r.Package.Name != "" {
+		return path.Base(r.Package.Name)
 	}
 	return filepath.Base(r.Root)
 }

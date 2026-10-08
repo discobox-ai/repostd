@@ -28,16 +28,20 @@ are per stack.
   `package.json` and no `go.mod` is a node repo. Each toolchain rule
   applies to its own stack and reports nothing for the other.
 - **Package manager and runtime.** A node repo uses pnpm. `package.json`
-  pins pnpm in `packageManager` and node in `engines.node`; the lockfile
-  is committed. These pins are what CI and a developer install from.
+  pins pnpm in `packageManager` and node in `devEngines.runtime`, the
+  fields pnpm itself reads to install both; the lockfile is committed.
+  These pins are what CI and a developer install from.
 - **Targets are `package.json` scripts**, run as `pnpm run <script>`, with
   the same names and meaning as the Taskfile targets: `build`, `run`
   and `dev` where there is a program, `test`, `check`, `fmt`, `generate`,
   `verify` and `ci`. There is no Taskfile.
-- **Lint and format are ESLint and Prettier**, with configs managed by
-  repostd the way `.golangci.yml` is, and repo additions only in marked
-  local blocks. `check` runs ESLint, Prettier's check, and the
-  typechecker.
+- **Lint and format are oxlint and oxfmt**, the tools Remix 3 itself uses,
+  with Remix's opt-in rules and formatting. oxlint is type-aware through
+  `oxlint-tsgolint`, which runs on TypeScript 7's compiler. The configs
+  are managed by repostd the way `.golangci.yml` is: the standard's rules
+  in `oxlint.repostd.json`, which a repo's `.oxlintrc.json` extends, and
+  `oxfmt.config.ts` with repo additions only in a marked local block.
+  `check` runs oxlint, oxfmt's check, and the typechecker.
 - **UI repos are Remix 3.** A node repo with a UI uses Remix 3 and its
   documented layout (`server.ts`, `app/` with `routes.ts`, `router.ts`,
   `actions/`, `ui/`, and `public/` beside its narrowest owner), and its
@@ -45,9 +49,9 @@ are per stack.
   conventions. `layout.root-dirs` and the other Go layout rules apply to Go
   repos only.
 - **CI** keeps the `verify`, `check` and `test` jobs, Depot runners, pinned
-  actions and read-only permissions. A node repo's jobs install node and
-  pnpm through pinned setup actions from the versions `package.json` pins,
-  and run only `pnpm run <script>` steps. One `repocheck` job runs
+  actions and read-only permissions. A node repo's jobs install pnpm and
+  node in one pinned `pnpm/setup` step from the versions `package.json`
+  pins, and run only `pnpm run <script>` steps. One `repocheck` job runs
   repocheck with `actions/setup-go` and `go run` at a pinned version, the
   only Go a node repo's CI uses.
 - **Discobox hooks and services** invoke `pnpm run <script>` instead of
@@ -70,9 +74,17 @@ are per stack.
   already say it unambiguously, and a declaration can disagree with them.
   A repo with both `go.mod` and `package.json` is a Go repo; a node
   frontend inside a Go repo is a judgment rule, not a second stack.
-- **Biome, or typechecking alone.** Biome is one fast tool for both, but
-  ESLint and Prettier are the established pair, with the widest plugin and
-  editor support. Typechecking alone standardizes no style.
+- **ESLint and Prettier.** The established pair, with the widest set of
+  rules and plugins, but typescript-eslint needs a TypeScript compiler API
+  that TypeScript 7 does not ship, so a TypeScript 7 repo would install
+  TypeScript 6 beside it only to lint. Remix, the framework the standard
+  picks, has moved to oxlint and oxfmt, whose type-aware lint runs on
+  TypeScript 7 itself. The oxc tools are younger (oxfmt and
+  `oxlint-tsgolint` are pre-1.0) and enforce fewer rules, which the
+  opt-in rule set does not miss.
+- **Biome, or typechecking alone.** Biome is one fast tool for both, but it
+  is not what Remix uses, so its style and Remix's would drift.
+  Typechecking alone standardizes no style.
 - **A checked list of node root directories.** Every framework convention
   would need a repostd change; `remix doctor` already checks the one
   framework we use, against its own documentation.
@@ -83,7 +95,7 @@ are per stack.
 ## Consequences
 
 - repocheck learns the node stack: rules for `package.json` pins and
-  scripts, the managed ESLint and Prettier configs, node CI steps, and
+  scripts, the managed oxlint and oxfmt configs, node CI steps, and
   node hooks; `init` writes node starter files for a node repo; the skill
   gains the node toolchain rules beside the Go ones.
 - A node repo's developers need only node and pnpm. Its CI needs Go for

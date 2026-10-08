@@ -14,6 +14,7 @@ var RootDirs = []string{"cmd", "docs", "internal", "pkg", "scripts", "test"}
 var layoutRules = []Rule{
 	{
 		ID:      "layout.root-dirs",
+		Stacks:  goOnly,
 		Summary: "Root directories are only " + strings.Join(RootDirs, ", ") + ", plus dot-directories.",
 		Check: func(r *repo.Repo) []Issue {
 			allowed := map[string]bool{}
@@ -42,6 +43,7 @@ var layoutRules = []Rule{
 	},
 	{
 		ID:      "layout.root-go",
+		Stacks:  goOnly,
 		Summary: "No Go package at the repo root.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -55,6 +57,7 @@ var layoutRules = []Rule{
 	},
 	{
 		ID:      "layout.go-work",
+		Stacks:  goOnly,
 		Summary: "One Go module; go.work needs a waiver.",
 		Check: func(r *repo.Repo) []Issue {
 			if r.Has("go.work") {
@@ -65,12 +68,12 @@ var layoutRules = []Rule{
 	},
 	{
 		ID:      "layout.no-makefile",
-		Summary: "No Makefile; targets live in Taskfile.yml.",
+		Summary: "No Makefile; targets live in Taskfile.yml, or a node repo's package.json scripts.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
 			for _, name := range []string{"Makefile", "GNUmakefile", "makefile"} {
 				for _, f := range r.Match(name) {
-					out = append(out, issue(f, "Makefile; move targets to Taskfile.yml"))
+					out = append(out, issue(f, "Makefile; move targets to %s", targetHome(r.Stack)))
 				}
 			}
 			return out
@@ -78,6 +81,7 @@ var layoutRules = []Rule{
 	},
 	{
 		ID:      "layout.no-tools-go",
+		Stacks:  goOnly,
 		Summary: "No tools.go; pin tools with go.mod tool directives.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -95,6 +99,7 @@ var layoutRules = []Rule{
 	},
 	{
 		ID:      "layout.no-goreleaser",
+		Stacks:  goOnly,
 		Summary: "No goreleaser; release logic is Taskfile targets backed by Go programs.",
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue

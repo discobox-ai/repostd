@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -16,24 +17,31 @@ import (
 	"github.com/discobox-ai/repostd/internal/repo"
 )
 
-// GolangciPath is the managed lint config, the one file with local blocks.
-const GolangciPath = ".golangci.yml"
+// LocalBlockFiles are the managed files that carry repo-owned local blocks:
+// a Go repo's golangci-lint config and a node repo's oxfmt config. A node
+// repo's oxlint rules need none: its own .oxlintrc.json extends the managed
+// oxlint.repostd.json.
+var LocalBlockFiles = []string{".golangci.yml", "oxfmt.config.ts"}
 
 // ADRReadme is the file holding the generated ADR index.
 const ADRReadme = adr.Dir + "/README.md"
 
+// A local block is a "repostd:local <name>" line and a "repostd:end" line,
+// each a comment in its file's syntax: "#" for YAML, "//" for JavaScript.
 const (
-	localBegin = "# repostd:local "
-	localEnd   = "# repostd:end"
+	localBegin = "repostd:local "
+	localEnd   = "repostd:end"
 )
+
+var commentPrefixes = []string{"# ", "// "}
 
 // Expected returns every file whose content repostd owns, as it should be in
 // r. The ADR README is included only when it exists and has index markers.
 func Expected(r *repo.Repo) ([]canon.File, error) {
 	var out []canon.File
-	for _, f := range canon.Managed() {
-		if f.Path == GolangciPath {
-			current, _ := r.Read(GolangciPath)
+	for _, f := range canon.Managed(r.Stack) {
+		if slices.Contains(LocalBlockFiles, f.Path) {
+			current, _ := r.Read(f.Path)
 			f.Data = MergeLocal(f.Data, current)
 		}
 		out = append(out, f)
@@ -64,7 +72,7 @@ func ADRs(r *repo.Repo) []*adr.ADR {
 	return out
 }
 
-// MergeLocal returns canonical with each "# repostd:local <name>" block's body
+// MergeLocal returns canonical with each "repostd:local <name>" block's body
 // replaced by the body of the same-named block in current. Blocks current
 // lacks stay empty; blocks canonical lacks are dropped.
 func MergeLocal(canonical, current []byte) []byte {
@@ -86,11 +94,15 @@ func MergeLocal(canonical, current []byte) []byte {
 	return b.Bytes()
 }
 
-// Dropped returns the names of r's non-empty .golangci.yml local blocks that
-// the standard no longer has, sorted. Sync refuses to drop their content.
-func Dropped(r *repo.Repo) []string {
-	current, _ := r.Read(GolangciPath)
-	f, _ := canon.ManagedFile(GolangciPath)
+// Dropped returns the names of the non-empty local blocks in r's copy of the
+// managed file p that the standard no longer has, sorted. Sync refuses to
+// drop their content.
+func Dropped(r *repo.Repo, p string) []string {
+	current, _ := r.Read(p)
+	f, ok := canon.ManagedFile(r.Stack, p)
+	if !ok {
+		return nil
+	}
 	want := LocalBlocks(f.Data)
 	var out []string
 	for name, body := range LocalBlocks(current) {
@@ -122,7 +134,7 @@ func LocalBlocks(data []byte) map[string]string {
 }
 
 func blockName(line string) (string, bool) {
-	t := strings.TrimSpace(line)
+	t := uncomment(line)
 	if !strings.HasPrefix(t, localBegin) {
 		return "", false
 	}
@@ -130,7 +142,18 @@ func blockName(line string) (string, bool) {
 }
 
 func isEnd(line string) bool {
-	return strings.TrimSpace(line) == localEnd
+	return uncomment(line) == localEnd
+}
+
+// uncomment returns a comment line's text, or "" for any other line.
+func uncomment(line string) string {
+	t := strings.TrimSpace(line)
+	for _, p := range commentPrefixes {
+		if rest, ok := strings.CutPrefix(t, p); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
 }
 
 // splitLines splits data into lines that keep their newline.
@@ -150,18 +173,19 @@ func splitLines(data []byte) []string {
 }
 
 // Sync writes every managed file that differs, and creates the standard's
-// symlinks that are missing. It returns the paths it changed. It leaves
-// .golangci.yml alone, and fails, while a local block the standard dropped
+// symlinks that are missing. It returns the paths it changed. It leaves a
+// lint config alone, and fails, while a local block the standard dropped
 // still has content.
 func Sync(r *repo.Repo) ([]string, error) {
 	want, err := Expected(r)
 	if err != nil {
 		return nil, err
 	}
-	dropped := Dropped(r)
+	var held []string
 	var changed []string
 	for _, f := range want {
-		if f.Path == GolangciPath && len(dropped) > 0 {
+		if dropped := Dropped(r, f.Path); len(dropped) > 0 {
+			held = append(held, fmt.Sprintf("%s (local blocks %s)", f.Path, strings.Join(dropped, ", ")))
 			continue
 		}
 		if got, ok := r.Read(f.Path); ok && bytes.Equal(got, f.Data) {
@@ -181,8 +205,8 @@ func Sync(r *repo.Repo) ([]string, error) {
 		}
 		changed = append(changed, s.Path)
 	}
-	if len(dropped) > 0 {
-		return changed, fmt.Errorf("%s not synced: local blocks %s are no longer in the standard; move their lines into a remaining local block, then sync", GolangciPath, strings.Join(dropped, ", "))
+	if len(held) > 0 {
+		return changed, fmt.Errorf("not synced: %s are no longer in the standard; move their lines into a remaining local block, then sync", strings.Join(held, "; "))
 	}
 	return changed, nil
 }

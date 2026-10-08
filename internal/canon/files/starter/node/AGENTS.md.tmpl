@@ -1,0 +1,75 @@
+# Repository Guidelines
+
+## Project Structure
+
+- `[[.Name]]`: TODO one-line description.
+- A UI is a Remix 3 app in its documented layout: `server.ts` at the root,
+  and under `app/` the route map (`routes.ts`), the router (`router.ts`),
+  `middleware/`, controllers in `actions/`, shared views in `ui/`, and
+  browser source in `public/` beside its narrowest owner. See Remix's
+  "Project tour" (`node_modules/remix/guides/01-start-here.md`);
+  `remix doctor` checks it.
+- `docs`: user/developer documentation and ADRs (`docs/adr`).
+- `DESIGN.md` / `REVIEW.md`: package-local design and review notes.
+
+## Shared Libraries
+
+Prefer the platform (Web APIs, `node:` modules) and the framework's own
+packages over new dependencies. A generic helper useful beyond [[.Name]] is a
+candidate for a shared discobox-ai package, not a copy here.
+
+## Git Workflow
+
+Work directly on whatever branch is already checked out. Do not create new
+branches or worktrees unless explicitly told to. Commit messages follow
+Conventional Commits.
+
+## Commands
+
+package.json scripts, run with pnpm, which installs the pnpm and node
+versions package.json pins:
+
+```bash
+pnpm install
+pnpm run dev        # run with hot reloading, where there is a program
+pnpm run test       # run tests
+pnpm run check      # oxlint, oxfmt's check, the typecheck (and remix doctor)
+pnpm run fmt        # format with oxfmt
+pnpm run generate   # regenerate generated files
+pnpm run verify     # formatting and generated files are current
+pnpm run ci         # everything CI runs: verify, check, test
+```
+
+At the end of a code-changing task, run `pnpm run ci`. Add package.json
+scripts instead of documenting ad hoc commands here.
+
+## Implementation Quality
+
+Prefer proper structural changes over compatibility shims or narrow patches.
+
+- Do not introduce optional interfaces for behavior the system requires. Add
+  required methods to the core interface and update all implementations.
+- Do not add wrapper types, adapter layers, or helper wrappers just to avoid
+  touching callers. Change the call sites.
+- Treat existing databases and persisted state as durable. Design schema
+  changes with a safe upgrade path.
+- When the correct fix crosses package boundaries, update the model,
+  interfaces, implementations, tests, and call sites together.
+- Keep abstractions justified by durable ownership or meaningful complexity
+  reduction.
+
+## Package Design Docs
+
+`DESIGN.md` explains the design of a package and its subdirectories;
+`REVIEW.md` lists its review rules and pitfalls. Read them from the root down
+to the package you are changing; closer files override parents. Keep them
+short and directive, describe current state only, and update them in the same
+change as the code. See the `repostd` skill for the rules.
+
+## Architecture Decision Records
+
+`docs/adr` records decisions and the alternatives rejected. Write an ADR only
+when a plausible alternative was rejected for a non-obvious reason, or
+something was deferred with a condition for revisiting it. Land it as
+`Proposed`; `Accepted` is the go-ahead. ADRs are immutable once shipped
+against: supersede, never edit. See `docs/adr/README.md`.

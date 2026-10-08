@@ -11,8 +11,12 @@ The skill is self-contained. It needs only git and Go (or Nix), installs
 nothing, and reports on the git repo in the current directory. Ask it to
 "conform" to have it fix what it finds.
 
+It covers Go repos and node repos (pnpm, oxlint, oxfmt, Remix 3), told
+apart by their manifests: see
+[ADR 0002](docs/adr/0002-a-node-repo-follows-the-standard-with-its-own-tools.md).
+
 The standard itself is the `repostd` skill:
-[`internal/canon/files/managed/.agents/skills/repostd/SKILL.md.tmpl`](internal/canon/files/managed/.agents/skills/repostd/SKILL.md.tmpl).
+[`internal/canon/files/managed/common/.agents/skills/repostd/SKILL.md.tmpl`](internal/canon/files/managed/common/.agents/skills/repostd/SKILL.md.tmpl).
 Every conforming repo carries a synced copy at
 `.agents/skills/repostd/SKILL.md`.
 

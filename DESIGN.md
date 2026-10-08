@@ -8,8 +8,8 @@ records the decisions and the alternatives rejected.
 
 ```mermaid
 flowchart LR
-    canon["internal/canon<br/>embedded managed + starter files"]
-    repo["internal/repo<br/>files git sees, go.mod, waivers"]
+    canon["internal/canon<br/>embedded managed + starter files, per stack"]
+    repo["internal/repo<br/>files git sees, go.mod, package.json, stack, waivers"]
     managed["internal/managed<br/>expected managed content, sync"]
     adr["internal/adr<br/>ADR parse + index"]
     rules["internal/rules<br/>one Rule per ID"]
@@ -21,16 +21,37 @@ flowchart LR
     cli --> canon
 ```
 
+## Stacks
+
+A repo is a **Go** repo (it has a `go.mod`, or neither manifest yet) or a
+**node** repo (a `package.json` and no `go.mod`), detected by
+`internal/repo` from the files rather than declared
+([ADR 0002](docs/adr/0002-a-node-repo-follows-the-standard-with-its-own-tools.md)).
+The stack picks two things: which distributed files a repo gets, and which
+rules apply. Everything that is not toolchain is shared.
+
+- `internal/canon/files/<managed|starter>/common` is every repo's;
+  `go/` and `node/` beside it are added for that stack.
+- A `Rule` names the stacks it applies to; none means all. `Run` skips the
+  rest, so a node repo never sees `layout.root-dirs` or `env.go-tools`, and
+  a Go repo never sees `env.node-*`. A shared rule that differs by stack
+  (`ci.workflow`, `discobox.hooks`, `git.ignore`) branches on `r.Stack`.
+
 ## Distributed files
 
-- **Managed** files are owned by repostd: `.golangci.yml`,
-  `.github/actions/task/action.yml`, `.github/actionlint.yaml`,
-  `docs/adr/template.md`, and the skill.
-  `sync` rewrites them, and `managed.files` fails on drift. The only
-  repo-owned content is `.golangci.yml`'s `# repostd:local <name>` blocks,
-  which sync carries over by name. Sync never drops a block's lines: when
-  the standard removes a block that still has content, sync skips the file
-  and fails, and `managed.files` reports it.
+- **Managed** files are owned by repostd: the skill,
+  `.github/actionlint.yaml` and `docs/adr/template.md` everywhere;
+  `.golangci.yml` and `.github/actions/task/action.yml` in a Go repo;
+  `oxlint.repostd.json`, `oxfmt.config.ts`, and the `pnpm` and
+  `repocheck` composite actions in a node repo. `sync` rewrites them, and
+  `managed.files` fails on drift. The only repo-owned content is their
+  local blocks (`# repostd:local <name>` in `.golangci.yml`,
+  `// repostd:local <name>` in `oxfmt.config.ts`), which sync carries over
+  by name. oxlint's config needs none: oxlint merges an `extends` chain, so
+  a repo's own `.oxlintrc.json` (a starter) extends the managed rules and
+  owns its ignores, which oxlint does not merge. Sync never drops a block's lines: when the standard removes a
+  block that still has content, sync skips the file and fails, and
+  `managed.files` reports it.
 - The **ADR index** in `docs/adr/README.md` is managed content inside a
   repo-owned file, between `repostd:adr-index` markers.
 - **Starter** files are written by `init` only when missing, rendered with
