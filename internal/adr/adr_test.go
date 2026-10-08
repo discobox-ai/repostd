@@ -31,7 +31,7 @@ func TestParseReadsTheStandardHeaderAndSections(t *testing.T) {
 	if len(a.Problems) > 0 {
 		t.Fatalf("problems: %v", a.Problems)
 	}
-	if a.Number != "0007" || a.Title != "Tests skip on an env var" || a.SupersededBy != "0009" {
+	if a.ID != "0007" || a.Title != "Tests skip on an env var" || a.SupersededBy != "0009" {
 		t.Errorf("parsed %+v", a)
 	}
 	if strings.Join(a.Supersedes, ",") != "0003,0004" {
@@ -39,6 +39,50 @@ func TestParseReadsTheStandardHeaderAndSections(t *testing.T) {
 	}
 	if strings.Join(a.Sections, ",") != "Context,Decision,Alternatives rejected,Consequences,Deferred" {
 		t.Errorf("Sections = %v; a heading inside a fence must not count", a.Sections)
+	}
+}
+
+func TestParseReadsADateIDAndLinkedReferences(t *testing.T) {
+	dated := "# 26-10-08-974 — IDs are dates\n\n" +
+		"- **Status**: Superseded by [26-10-09-001](26-10-09-001-ids-are-something-else.md)\n" +
+		"- **Date**: 2026-10-08\n" +
+		"- **Supersedes**: 0003, [26-09-24-458](26-09-24-458-adr-ids.md)\n\n" +
+		"## Context\n\n## Decision\n\n## Alternatives rejected\n\n## Consequences\n"
+	a := adr.Parse("docs/adr/26-10-08-974-ids-are-dates.md", []byte(dated))
+	if len(a.Problems) > 0 {
+		t.Fatalf("problems: %v", a.Problems)
+	}
+	if a.ID != "26-10-08-974" || a.SupersededBy != "26-10-09-001" {
+		t.Errorf("parsed %+v", a)
+	}
+	if strings.Join(a.Supersedes, ",") != "0003,26-09-24-458" {
+		t.Errorf("Supersedes = %v", a.Supersedes)
+	}
+}
+
+func TestParseRejectsAnIDOfNeitherForm(t *testing.T) {
+	for _, name := range []string{"007-short.md", "26-10-8-974-one-digit-day.md", "26-10-08-97-short-suffix.md"} {
+		a := adr.Parse("docs/adr/"+name, []byte("# 007 — Short\n"))
+		if a.ID != "" || len(a.Problems) == 0 {
+			t.Errorf("%s: ID %q, problems %v; want no ID and a problem", name, a.ID, a.Problems)
+		}
+	}
+}
+
+func TestIndexSortsSequentialIDsBeforeDateIDs(t *testing.T) {
+	var adrs []*adr.ADR
+	for _, f := range []string{"26-10-08-974-b.md", "0002-a.md", "26-09-24-458-c.md"} {
+		adrs = append(adrs, adr.Parse("docs/adr/"+f, nil))
+	}
+	got := adr.Index(adrs)
+	want := []string{"[0002]", "[26-09-24-458]", "[26-10-08-974]"}
+	last := -1
+	for _, w := range want {
+		i := strings.Index(got, w)
+		if i <= last {
+			t.Fatalf("index out of order, want %v:\n%s", want, got)
+		}
+		last = i
 	}
 }
 

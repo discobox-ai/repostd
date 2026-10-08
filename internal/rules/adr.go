@@ -41,18 +41,18 @@ var adrRules = []Rule{
 	},
 	{
 		ID:      "adr.unique",
-		Summary: "ADR numbers are unique.",
+		Summary: "ADR IDs are unique.",
 		Check: func(r *repo.Repo) []Issue {
-			byNumber := map[string][]string{}
+			byID := map[string][]string{}
 			for _, a := range managed.ADRs(r) {
-				if a.Number != "" {
-					byNumber[a.Number] = append(byNumber[a.Number], a.Path)
+				if a.ID != "" {
+					byID[a.ID] = append(byID[a.ID], a.Path)
 				}
 			}
 			var out []Issue
 			for _, a := range managed.ADRs(r) {
-				if paths := byNumber[a.Number]; len(paths) > 1 && paths[0] != a.Path {
-					out = append(out, issue(a.Path, "ADR number %s is also used by %s", a.Number, paths[0]))
+				if paths := byID[a.ID]; len(paths) > 1 && paths[0] != a.Path {
+					out = append(out, issue(a.Path, "ADR ID %s is also used by %s", a.ID, paths[0]))
 				}
 			}
 			return out
@@ -63,30 +63,30 @@ var adrRules = []Rule{
 		Summary: "\"Superseded by B\" and \"Supersedes: A\" always appear together.",
 		Check: func(r *repo.Repo) []Issue {
 			adrs := managed.ADRs(r)
-			byNumber := map[string]*adr.ADR{}
+			byID := map[string]*adr.ADR{}
 			for _, a := range adrs {
-				if _, dup := byNumber[a.Number]; !dup {
-					byNumber[a.Number] = a
+				if _, dup := byID[a.ID]; !dup {
+					byID[a.ID] = a
 				}
 			}
 			var out []Issue
 			for _, a := range adrs {
 				if a.SupersededBy != "" {
-					b, ok := byNumber[a.SupersededBy]
+					b, ok := byID[a.SupersededBy]
 					switch {
 					case !ok:
 						out = append(out, issue(a.Path, "superseded by %s, which does not exist", a.SupersededBy))
-					case !slices.Contains(b.Supersedes, a.Number):
-						out = append(out, issue(b.Path, "%s says it is superseded by %s, but this ADR has no \"- **Supersedes**: %s\"", a.Number, b.Number, a.Number))
+					case !slices.Contains(b.Supersedes, a.ID):
+						out = append(out, issue(b.Path, "%s says it is superseded by %s, but this ADR has no \"- **Supersedes**: %s\"", a.ID, b.ID, a.ID))
 					}
 				}
 				for _, n := range a.Supersedes {
-					old, ok := byNumber[n]
+					old, ok := byID[n]
 					switch {
 					case !ok:
 						out = append(out, issue(a.Path, "supersedes %s, which does not exist", n))
-					case old.SupersededBy != a.Number:
-						out = append(out, issue(old.Path, "%s supersedes this ADR, but its status is %q, not \"Superseded by %s\"", a.Number, old.Status, a.Number))
+					case old.SupersededBy != a.ID:
+						out = append(out, issue(old.Path, "%s supersedes this ADR, but its status is %q, not \"Superseded by %s\"", a.ID, old.Status, a.ID))
 					}
 				}
 			}

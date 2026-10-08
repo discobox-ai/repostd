@@ -166,16 +166,25 @@ inside a git repository, `$RC` says so; stop and tell the user.
 
 ### ADRs (`docs/adr`)
 
-- Filenames are `NNNN-slug-stating-the-decision.md`: four digits, unique,
-  with a lowercase hyphenated slug. `adr.unique`
+- An ADR's ID is `YY-MM-DD-RRR`: the date it is written plus three random
+  digits (`printf '%03d' $((RANDOM % 1000))`), never the next number in a
+  sequence, so two branches cannot claim the same one. ADRs written as
+  four-digit `NNNN` before this keep their IDs. Never renumber an ADR; if two
+  branches draw the same ID, re-roll the suffix of the unmerged one.
+  `adr.unique`
+- Filenames are `<ID>-slug-stating-the-decision.md`, with a lowercase
+  hyphenated slug.
 - The header is exactly:
 
   ```markdown
-  # NNNN — Title
-  - **Status**: Proposed | Accepted | Rejected | Superseded by NNNN
+  # <ID> — Title
+  - **Status**: Proposed | Accepted | Rejected | Superseded by <ID>
   - **Date**: YYYY-MM-DD
-  - **Supersedes**: NNNN        (optional)
+  - **Supersedes**: <ID>, <ID>  (optional)
   ```
+
+  An `<ID>` after `Superseded by` or `Supersedes` may be a link,
+  `[<ID>](<file>)`. Cite ADRs in prose as `ADR <ID>`.
 
 - "Superseded by B" in A and "Supersedes: A" in B always appear together.
   `adr.supersede`

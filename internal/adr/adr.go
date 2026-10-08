@@ -26,23 +26,40 @@ var RequiredSections = []string{"Context", "Decision", "Alternatives rejected", 
 // OptionalSections may appear in addition to RequiredSections.
 var OptionalSections = []string{"Deferred"}
 
+// id matches an ADR ID: YY-MM-DD-RRR, the date the ADR was written plus three
+// random digits, or NNNN, the sequential form ADRs written before it keep.
+const id = `\d{2}-\d{2}-\d{2}-\d{3}|\d{4}`
+
+// ref matches a reference to an ADR: its bare ID, or a Markdown link whose
+// text is the ID.
+const ref = `(?:(` + id + `)|\[(` + id + `)\]\([^)\s]+\))`
+
 var (
-	fileRE       = regexp.MustCompile(`^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
-	titleRE      = regexp.MustCompile(`^# (\d{4}) — (\S.*)$`)
+	fileRE       = regexp.MustCompile(`^(` + id + `)-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
+	titleRE      = regexp.MustCompile(`^# (` + id + `) — (\S.*)$`)
 	fieldRE      = regexp.MustCompile(`^- \*\*([A-Za-z ]+)\*\*: (.*)$`)
-	supersededRE = regexp.MustCompile(`^Superseded by (\d{4})$`)
-	numberRE     = regexp.MustCompile(`^\d{4}$`)
+	supersededRE = regexp.MustCompile(`^Superseded by ` + ref + `$`)
+	refRE        = regexp.MustCompile(`^` + ref + `$`)
 	dateRE       = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
+// refID returns the ADR ID in the submatches of ref, which are bare or linked.
+func refID(m []string) string {
+	if m[1] != "" {
+		return m[1]
+	}
+	return m[2]
+}
+
 // ADR is one parsed record.
 type ADR struct {
-	Path   string
-	Number string
+	Path string
+	// ID is YY-MM-DD-RRR, or NNNN for an ADR written before that form.
+	ID     string
 	Title  string
 	Status string
 	Date   string
-	// SupersededBy is set when Status is "Superseded by NNNN".
+	// SupersededBy is set when Status is "Superseded by <ID>".
 	SupersededBy string
 	Supersedes   []string
 	Sections     []string
@@ -65,9 +82,9 @@ func Parse(p string, data []byte) *ADR {
 	a := &ADR{Path: p}
 	m := fileRE.FindStringSubmatch(path.Base(p))
 	if m == nil {
-		a.Problems = append(a.Problems, "filename is not NNNN-lowercase-hyphenated-slug.md")
+		a.Problems = append(a.Problems, "filename is not <ID>-lowercase-hyphenated-slug.md, where <ID> is YY-MM-DD-RRR or NNNN")
 	} else {
-		a.Number = m[1]
+		a.ID = m[1]
 	}
 
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
@@ -80,13 +97,13 @@ func Parse(p string, data []byte) *ADR {
 		return a
 	}
 	if t := titleRE.FindStringSubmatch(lines[i]); t == nil {
-		a.Problems = append(a.Problems, fmt.Sprintf("first line is not \"# NNNN — Title\": %q", lines[i]))
+		a.Problems = append(a.Problems, fmt.Sprintf("first line is not \"# <ID> — Title\": %q", lines[i]))
 	} else {
-		if a.Number != "" && t[1] != a.Number {
-			a.Problems = append(a.Problems, fmt.Sprintf("title number %s does not match filename number %s", t[1], a.Number))
+		if a.ID != "" && t[1] != a.ID {
+			a.Problems = append(a.Problems, fmt.Sprintf("title ID %s does not match filename ID %s", t[1], a.ID))
 		}
-		if a.Number == "" {
-			a.Number = t[1]
+		if a.ID == "" {
+			a.ID = t[1]
 		}
 		a.Title = t[2]
 	}
@@ -112,9 +129,9 @@ func Parse(p string, data []byte) *ADR {
 	case "Proposed", "Accepted", "Rejected":
 	default:
 		if s := supersededRE.FindStringSubmatch(a.Status); s != nil {
-			a.SupersededBy = s[1]
+			a.SupersededBy = refID(s)
 		} else {
-			a.Problems = append(a.Problems, fmt.Sprintf("status %q is not Proposed, Accepted, Rejected, or \"Superseded by NNNN\"", a.Status))
+			a.Problems = append(a.Problems, fmt.Sprintf("status %q is not Proposed, Accepted, Rejected, or \"Superseded by <ID>\"", a.Status))
 		}
 	}
 	if !dateRE.MatchString(a.Date) {
@@ -122,12 +139,12 @@ func Parse(p string, data []byte) *ADR {
 	}
 	if s, ok := fields["Supersedes"]; ok {
 		for n := range strings.SplitSeq(s, ",") {
-			n = strings.TrimSpace(n)
-			if !numberRE.MatchString(n) {
-				a.Problems = append(a.Problems, fmt.Sprintf("Supersedes entry %q is not an ADR number", n))
+			m := refRE.FindStringSubmatch(strings.TrimSpace(n))
+			if m == nil {
+				a.Problems = append(a.Problems, fmt.Sprintf("Supersedes entry %q is not an ADR ID or a link to one", strings.TrimSpace(n)))
 				continue
 			}
-			a.Supersedes = append(a.Supersedes, n)
+			a.Supersedes = append(a.Supersedes, refID(m))
 		}
 	}
 
@@ -166,12 +183,13 @@ func sectionProblems(got []string) []string {
 	return problems
 }
 
-// Index renders the index table for adrs, ordered by number.
+// Index renders the index table for adrs, ordered by ID: the NNNN ADRs sort
+// first, then the YY-MM-DD-RRR ones by date.
 func Index(adrs []*ADR) string {
 	sorted := append([]*ADR(nil), adrs...)
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Number != sorted[j].Number {
-			return sorted[i].Number < sorted[j].Number
+		if sorted[i].ID != sorted[j].ID {
+			return sorted[i].ID < sorted[j].ID
 		}
 		return sorted[i].Path < sorted[j].Path
 	})
@@ -179,7 +197,7 @@ func Index(adrs []*ADR) string {
 	b.WriteString("| ADR | Title | Status |\n|---|---|---|\n")
 	for _, a := range sorted {
 		title := strings.ReplaceAll(a.Title, "|", `\|`)
-		fmt.Fprintf(&b, "| [%s](%s) | %s | %s |\n", a.Number, path.Base(a.Path), title, a.Status)
+		fmt.Fprintf(&b, "| [%s](%s) | %s | %s |\n", a.ID, path.Base(a.Path), title, a.Status)
 	}
 	return b.String()
 }

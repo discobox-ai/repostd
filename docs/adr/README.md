@@ -17,4 +17,5 @@ Follow `template.md` and the `repostd` skill.
 |---|---|---|
 | [0001](0001-one-standard-enforced-by-repocheck-and-a-skill.md) | One standard for discobox-ai repos, enforced by repocheck and a skill | Accepted |
 | [0002](0002-a-node-repo-follows-the-standard-with-its-own-tools.md) | A node repo follows the standard with its own tools | Accepted |
+| [26-10-08-974](26-10-08-974-adr-ids-are-a-date-and-a-random-suffix.md) | ADR IDs are a date and a random suffix | Accepted |
 <!-- /repostd:adr-index -->
