@@ -1,6 +1,6 @@
 # 0002 — A node repo follows the standard with its own tools
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-08
 
 ## Context

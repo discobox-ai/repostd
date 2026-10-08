@@ -16,5 +16,5 @@ Follow `template.md` and the `repostd` skill.
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-one-standard-enforced-by-repocheck-and-a-skill.md) | One standard for discobox-ai repos, enforced by repocheck and a skill | Accepted |
-| [0002](0002-a-node-repo-follows-the-standard-with-its-own-tools.md) | A node repo follows the standard with its own tools | Proposed |
+| [0002](0002-a-node-repo-follows-the-standard-with-its-own-tools.md) | A node repo follows the standard with its own tools | Accepted |
 <!-- /repostd:adr-index -->
