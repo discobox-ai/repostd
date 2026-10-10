@@ -184,7 +184,13 @@ inside a git repository, `$RC` says so; stop and tell the user.
   ```
 
   An `<ID>` after `Superseded by` or `Supersedes` may be a link,
-  `[<ID>](<file>)`. Cite ADRs in prose as `ADR <ID>`.
+  `[<ID>](<file>)`. Cite ADRs in prose as `ADR <ID>`. A header value may
+  wrap onto indented lines.
+- When a later ADR replaces only part of an earlier one, the earlier ADR
+  keeps its status and gains a note in parentheses naming the part and the
+  later ADR: `Accepted (§4 superseded by [<ID>](<file>))`. `Superseded by`
+  and `Supersedes` are for a whole ADR. Changing a status or its note is the
+  one edit an accepted ADR takes.
 
 - "Superseded by B" in A and "Supersedes: A" in B always appear together.
   `adr.supersede`

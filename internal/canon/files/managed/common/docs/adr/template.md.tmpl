@@ -6,6 +6,7 @@
 <!-- Optional header lines:
 - **Supersedes**: YY-MM-DD-RRR
 - **Superseded by**: set by changing Status to "Superseded by YY-MM-DD-RRR"
+- Superseded in part: add a note to Status, "Accepted (§2 superseded by YY-MM-DD-RRR)"
 -->
 
 ## Context

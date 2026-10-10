@@ -60,6 +60,40 @@ func TestParseReadsADateIDAndLinkedReferences(t *testing.T) {
 	}
 }
 
+func TestParseJoinsAWrappedStatusAndKeepsItsNote(t *testing.T) {
+	wrapped := "# 0003 — Pools are first class\n\n" +
+		"- **Status**: Accepted (§4 superseded by\n" +
+		"  [0029](0029-no-requests.md); the rest stands)\n" +
+		"- **Date**: 2026-07-17\n\n" +
+		"## Context\n\n## Decision\n\n## Alternatives rejected\n\n## Consequences\n"
+	a := adr.Parse("docs/adr/0003-pools-are-first-class.md", []byte(wrapped))
+	if len(a.Problems) > 0 {
+		t.Fatalf("problems: %v", a.Problems)
+	}
+	if want := "Accepted (§4 superseded by [0029](0029-no-requests.md); the rest stands)"; a.Status != want {
+		t.Errorf("Status = %q, want %q", a.Status, want)
+	}
+	if a.Date != "2026-07-17" || a.SupersededBy != "" {
+		t.Errorf("parsed %+v; a note about a part does not supersede the ADR", a)
+	}
+}
+
+func TestParseReadsSupersededByWithANote(t *testing.T) {
+	a := adr.Parse("docs/adr/0015-nri.md", []byte("# 0015 — NRI\n\n- **Status**: Superseded by 0020 (the plugin was never shipped)\n- **Date**: 2026-07-20\n"))
+	if a.SupersededBy != "0020" {
+		t.Errorf("SupersededBy = %q, want 0020", a.SupersededBy)
+	}
+}
+
+func TestParseRejectsAStatusThatIsNotAState(t *testing.T) {
+	for _, status := range []string{"Done", "Accepted, mostly", "Accepted (unclosed"} {
+		a := adr.Parse("docs/adr/0001-a.md", []byte("# 0001 — A\n\n- **Status**: "+status+"\n- **Date**: 2026-07-20\n"))
+		if !strings.Contains(strings.Join(a.Problems, "\n"), "status ") {
+			t.Errorf("status %q: no status problem in %v", status, a.Problems)
+		}
+	}
+}
+
 func TestParseRejectsAnIDOfNeitherForm(t *testing.T) {
 	for _, name := range []string{"007-short.md", "26-10-8-974-one-digit-day.md", "26-10-08-97-short-suffix.md"} {
 		a := adr.Parse("docs/adr/"+name, []byte("# 007 — Short\n"))

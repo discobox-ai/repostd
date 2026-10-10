@@ -35,12 +35,14 @@ const id = `\d{2}-\d{2}-\d{2}-\d{3}|\d{4}`
 const ref = `(?:(` + id + `)|\[(` + id + `)\]\([^)\s]+\))`
 
 var (
-	fileRE       = regexp.MustCompile(`^(` + id + `)-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
-	titleRE      = regexp.MustCompile(`^# (` + id + `) — (\S.*)$`)
-	fieldRE      = regexp.MustCompile(`^- \*\*([A-Za-z ]+)\*\*: (.*)$`)
-	supersededRE = regexp.MustCompile(`^Superseded by ` + ref + `$`)
-	refRE        = regexp.MustCompile(`^` + ref + `$`)
-	dateRE       = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	fileRE  = regexp.MustCompile(`^(` + id + `)-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
+	titleRE = regexp.MustCompile(`^# (` + id + `) — (\S.*)$`)
+	fieldRE = regexp.MustCompile(`^- \*\*([A-Za-z ]+)\*\*: (.*)$`)
+	// A status is one of the four states, then an optional note in parentheses
+	// saying which part of the ADR another one superseded, refined or narrowed.
+	statusRE = regexp.MustCompile(`^(Proposed|Accepted|Rejected|Superseded by ` + ref + `)(?: \((.+)\))?$`)
+	refRE    = regexp.MustCompile(`^` + ref + `$`)
+	dateRE   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 )
 
 // refID returns the ADR ID in the submatches of ref, which are bare or linked.
@@ -114,25 +116,27 @@ func Parse(p string, data []byte) *ADR {
 		i++
 	}
 	fields := map[string]string{}
-	for ; i < len(lines); i++ {
+	for i < len(lines) {
 		f := fieldRE.FindStringSubmatch(lines[i])
 		if f == nil {
 			break
 		}
-		fields[f[1]] = strings.TrimSpace(f[2])
+		value := []string{strings.TrimSpace(f[2])}
+		// A value wraps onto the indented lines that follow it.
+		for i++; i < len(lines) && isContinuation(lines[i]); i++ {
+			value = append(value, strings.TrimSpace(lines[i]))
+		}
+		fields[f[1]] = strings.TrimSpace(strings.Join(value, " "))
 	}
 	a.Status = fields["Status"]
 	a.Date = fields["Date"]
-	switch a.Status {
-	case "":
+	switch s := statusRE.FindStringSubmatch(a.Status); {
+	case a.Status == "":
 		a.Problems = append(a.Problems, "missing \"- **Status**:\" header line")
-	case "Proposed", "Accepted", "Rejected":
-	default:
-		if s := supersededRE.FindStringSubmatch(a.Status); s != nil {
-			a.SupersededBy = refID(s)
-		} else {
-			a.Problems = append(a.Problems, fmt.Sprintf("status %q is not Proposed, Accepted, Rejected, or \"Superseded by <ID>\"", a.Status))
-		}
+	case s == nil:
+		a.Problems = append(a.Problems, fmt.Sprintf("status %q is not Proposed, Accepted, Rejected, or \"Superseded by <ID>\", optionally followed by a note in parentheses", a.Status))
+	case strings.HasPrefix(s[1], "Superseded by "):
+		a.SupersededBy = refID(s[1:])
 	}
 	if !dateRE.MatchString(a.Date) {
 		a.Problems = append(a.Problems, "missing or malformed \"- **Date**: YYYY-MM-DD\" header line")
@@ -160,6 +164,12 @@ func Parse(p string, data []byte) *ADR {
 	}
 	a.Problems = append(a.Problems, sectionProblems(a.Sections)...)
 	return a
+}
+
+// isContinuation reports whether l continues the header field above it: it is
+// indented and not blank.
+func isContinuation(l string) bool {
+	return strings.TrimSpace(l) != "" && (strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t"))
 }
 
 func sectionProblems(got []string) []string {
@@ -196,8 +206,8 @@ func Index(adrs []*ADR) string {
 	var b strings.Builder
 	b.WriteString("| ADR | Title | Status |\n|---|---|---|\n")
 	for _, a := range sorted {
-		title := strings.ReplaceAll(a.Title, "|", `\|`)
-		fmt.Fprintf(&b, "| [%s](%s) | %s | %s |\n", a.ID, path.Base(a.Path), title, a.Status)
+		cell := strings.NewReplacer("|", `\|`)
+		fmt.Fprintf(&b, "| [%s](%s) | %s | %s |\n", a.ID, path.Base(a.Path), cell.Replace(a.Title), cell.Replace(a.Status))
 	}
 	return b.String()
 }
