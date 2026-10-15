@@ -57,11 +57,19 @@ Prefer proper structural changes over compatibility shims or narrow patches.
 
 ## Package Design Docs
 
-`DESIGN.md` explains the design of a package and its subdirectories;
-`REVIEW.md` lists its review rules and pitfalls. Read them from the root down
-to the package you are changing; closer files override parents. Keep them
-short and directive, describe current state only, and update them in the same
-change as the code. See the `repostd` skill for the rules.
+`DESIGN.md` explains the design of a package and its subdirectories.
+`REVIEW.md` holds its review notes: what to check and the pitfalls already
+hit. Read both from the root down to every package you are changing or
+reviewing; closer files override parents. When reviewing, a change that
+breaks a `REVIEW.md` note is a finding.
+
+Add a bullet to the closest `REVIEW.md` when you find something non-obvious a
+future review should check, when the same mistake is made a second time, or
+when you fix a regression. The bullet states the rule, then why. The author
+writes it, in the change that fixes what prompted it; a reviewer that thinks
+one is due says so in its comment. Keep both files short and directive,
+describe current state only, and update them in the same change as the code.
+See the `repostd` skill for the rules.
 
 ## Architecture Decision Records
 
