@@ -19,4 +19,5 @@ Follow `template.md` and the `repostd` skill.
 | [0002](0002-a-node-repo-follows-the-standard-with-its-own-tools.md) | A node repo follows the standard with its own tools | Accepted |
 | [26-10-08-974](26-10-08-974-adr-ids-are-a-date-and-a-random-suffix.md) | ADR IDs are a date and a random suffix | Accepted |
 | [26-10-10-265](26-10-10-265-a-status-carries-a-note-when-part-of-an-adr-is-superseded.md) | A status carries a note when part of an ADR is superseded | Accepted |
+| [26-10-15-260](26-10-15-260-review-notes-are-written-by-the-author-and-read-by-every-reviewer.md) | Review notes are written by the author and read by every reviewer | Accepted |
 <!-- /repostd:adr-index -->
