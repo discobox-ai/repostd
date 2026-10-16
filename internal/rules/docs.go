@@ -13,7 +13,6 @@ import (
 var AgentsSections = []string{
 	"Project Structure",
 	"Shared Libraries",
-	"Git Workflow",
 	"Commands",
 	"Implementation Quality",
 	"Package Design Docs",

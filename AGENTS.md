@@ -28,12 +28,6 @@ Reuse `github.com/discobox-ai/x` packages when applicable instead of writing
 local equivalents (`go get github.com/discobox-ai/x@main`). If a generic
 helper would be useful beyond repostd, it belongs in `x`, not here.
 
-## Git Workflow
-
-Work directly on whatever branch is already checked out. Do not create new
-branches or worktrees unless explicitly told to. Commit messages follow
-Conventional Commits.
-
 ## Commands
 
 Use Taskfile targets through the Go tool-managed `task` binary:
