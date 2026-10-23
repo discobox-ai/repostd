@@ -1,0 +1,10 @@
+# The dev loop: rebuild whenever the source changes. repocheck is a CLI with
+# nothing long-running to serve, so there is no run command.
+watch:
+  extensions: [go, tmpl]  # tmpl: the embedded canon files
+  include: [go.mod, go.sum]
+  exclude: ["*_test.go"]
+  exclude_dirs: [build]
+
+build:
+  command: go tool task build

@@ -26,6 +26,11 @@ tasks:
       - mkdir -p build
       - go build -ldflags '{{.LDFLAGS}}' -o {{.BINARY}} {{.MAIN}}
 
+  dev:
+    desc: Rebuild repostd whenever its source changes
+    cmds:
+      - go tool watchnbuild -config .wnb.yaml
+
   run:
     desc: Run repostd (pass flags after --)
     cmds:

@@ -26,6 +26,11 @@ tasks:
       - mkdir -p build
       - go build -ldflags '{{.LDFLAGS}}' -o {{.BINARY}} {{.MAIN}}
 
+  dev:
+    desc: Rebuild [[.Name]] whenever its source changes, and restart it if it serves
+    cmds:
+      - go tool watchnbuild -config .wnb.yaml
+
   run:
     desc: Run [[.Name]] (pass flags after --)
     cmds:

@@ -10,18 +10,19 @@ import (
 	"github.com/discobox-ai/repostd/internal/repo"
 )
 
+// WatchTool is the watch-and-build loop a `dev` target runs.
+const WatchTool = "github.com/discobox-ai/watchnbuild"
+
 // RequiredTools are the go.mod tool directives every repo has.
 var RequiredTools = []string{
 	"github.com/go-task/task/v3/cmd/task",
 	"github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
 	"github.com/discobox-ai/repostd/cmd/repocheck",
+	WatchTool,
 }
 
 // RequiredTargets are the Taskfile targets every repo has.
-var RequiredTargets = []string{"build", "test", "check", "fmt", "tidy", "generate", "verify", "ci"}
-
-// WatchTool is the hot-reload loop a `dev` target runs.
-const WatchTool = "github.com/discobox-ai/watchnbuild"
+var RequiredTargets = []string{"build", "dev", "test", "check", "fmt", "tidy", "generate", "verify", "ci"}
 
 // wnbConfigRE matches a watchnbuild config name: .wnb.yaml, or .wnb.<name>.yaml
 // for a second loop.
@@ -68,7 +69,7 @@ var envRules = []Rule{
 	{
 		ID:      "env.go-tools",
 		Stacks:  goOnly,
-		Summary: "go.mod pins task, golangci-lint, and repocheck as tool directives.",
+		Summary: "go.mod pins task, golangci-lint, repocheck, and watchnbuild as tool directives.",
 		Check: func(r *repo.Repo) []Issue {
 			if r.Mod == nil {
 				return []Issue{issue("go.mod", "missing go.mod")}
@@ -129,40 +130,24 @@ var envRules = []Rule{
 	{
 		ID:      "env.dev-watch",
 		Stacks:  goOnly,
-		Summary: "Where there is a dev target, hot reload is watchnbuild against a .wnb.yaml, and no config is orphaned.",
+		Summary: "The dev target is watchnbuild against a .wnb.yaml, and no config is orphaned.",
 		Check: func(r *repo.Repo) []Issue {
 			tasks, raw, err := taskfile(r)
 			if err != nil {
 				return nil // env.taskfile-targets reports it.
 			}
-			hasDev := false
-			for name := range tasks {
-				hasDev = hasDev || name == "dev" || strings.HasPrefix(name, "dev:")
-			}
-			configs := r.Match(".wnb*.yaml")
-			if !hasDev && len(configs) == 0 {
-				return nil // A repo with no long-running program needs neither.
+			if _, ok := tasks["dev"]; !ok {
+				return nil // env.taskfile-targets reports it.
 			}
 
 			var out []Issue
-			// A repo may have helper dev:* targets that do not hot-reload, so
-			// this asks only that the loop exists and is wired up.
+			// A repo may have helper dev:* targets that do not watch, so this
+			// asks only that the loop exists and is wired up.
 			switch {
-			case !hasDev:
-				out = append(out, issue(configs[0], "watchnbuild config without a dev target"))
 			case !strings.Contains(raw, "watchnbuild"):
-				out = append(out, issue("Taskfile.yml", "no dev target runs watchnbuild; hot reload is `go tool watchnbuild -config <file>`"))
+				out = append(out, issue("Taskfile.yml", "no dev target runs watchnbuild; the dev loop is `go tool watchnbuild -config <file>`"))
 			case !r.Has(".wnb.yaml"):
 				out = append(out, issue(".wnb.yaml", "dev target without a .wnb.yaml"))
-			}
-			if hasDev && r.Mod != nil {
-				pinned := false
-				for _, t := range r.Mod.Tool {
-					pinned = pinned || t.Path == WatchTool
-				}
-				if !pinned && strings.Contains(raw, "watchnbuild") {
-					out = append(out, issue("go.mod", "missing tool directive %s (go get -tool %s)", WatchTool, WatchTool))
-				}
 			}
 			used := map[string]bool{}
 			for _, c := range wnbConfigRE.FindAllString(raw, -1) {
@@ -171,7 +156,7 @@ var envRules = []Rule{
 					out = append(out, issue("Taskfile.yml", "a dev target uses %s, which does not exist", c))
 				}
 			}
-			for _, c := range configs {
+			for _, c := range r.Match(".wnb*.yaml") {
 				// .wnb.yaml is watchnbuild's default, so it needs no mention.
 				if c != ".wnb.yaml" && !used[c] {
 					out = append(out, issue(c, "no dev target uses this config"))
