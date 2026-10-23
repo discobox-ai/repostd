@@ -22,6 +22,7 @@ go 1.27.1
 
 tool (
 	github.com/discobox-ai/repostd/cmd/repocheck
+	github.com/discobox-ai/watchnbuild
 	github.com/go-task/task/v3/cmd/task
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 )
@@ -160,20 +161,14 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 			"internal/x/x_test.go": "package x\n\nvar env = map[string]string{\"EXAMPLE_E2E\": \"true\"}\n",
 		}, want: "tests.env-read"},
 		{name: "a GitHub-hosted runner in matrix.include", files: map[string]string{".github/workflows/build.yml": "on: push\npermissions:\n  contents: read\njobs:\n  build:\n    strategy:\n      matrix:\n        include:\n          - runs-on: depot-ubuntu-24.04-4\n          - runs-on: macos-15\n    runs-on: ${{ matrix.runs-on }}\n    steps:\n      - run: go tool task build\n"}, want: "ci.runners"},
-		{name: "a dev target without watchnbuild", files: map[string]string{
-			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go run ./cmd/example]\n\n  test:\n"),
-			".wnb.yaml":    "build:\n  command: go build ./...\n",
-		}, want: "env.dev-watch"},
-		{name: "an orphaned watchnbuild config", files: map[string]string{".wnb.yaml": "build:\n  command: go build ./...\n"}, want: "env.dev-watch"},
+		{name: "no dev target", files: map[string]string{"Taskfile.yml": starterWith(t, "Taskfile.yml", "  dev:\n", "  watch:\n")}, want: "env.taskfile-targets"},
+		{name: "a dev target without watchnbuild", files: map[string]string{"Taskfile.yml": starterWith(t, "Taskfile.yml", "go tool watchnbuild -config .wnb.yaml", "go run ./cmd/example")}, want: "env.dev-watch"},
+		{name: "a dev target without a .wnb.yaml", remove: []string{".wnb.yaml"}, want: "env.dev-watch"},
+		{name: "an orphaned watchnbuild config", files: map[string]string{".wnb.cli.yaml": "build:\n  command: go build ./...\n"}, want: "env.dev-watch"},
 		{name: "a dev target using a config that does not exist", files: map[string]string{
 			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:cli:\n    cmds: [go tool watchnbuild -config .wnb.cli.yaml]\n\n  test:\n"),
-			".wnb.yaml":    "build:\n  command: go build ./...\n",
-			"go.mod":       strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1),
 		}, want: "env.dev-watch"},
-		{name: "a watchnbuild loop without the tool pinned", files: map[string]string{
-			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"),
-			".wnb.yaml":    "build:\n  command: go build ./...\n",
-		}, want: "env.dev-watch"},
+		{name: "watchnbuild not pinned", files: map[string]string{"go.mod": strings.Replace(goMod, "\tgithub.com/discobox-ai/watchnbuild\n", "", 1)}, want: "env.go-tools"},
 		{name: "a server taking a config flag", files: map[string]string{
 			"cmd/example-server/main.go": "package main\n\nimport \"flag\"\n\nfunc main() {\n\tflag.String(\"listen\", \":8080\", \"address\")\n}\n",
 			"config.schema.json":         "{}\n",
@@ -185,11 +180,7 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a hook running a tool directly", files: map[string]string{".discobox/hooks/50-x.sh": "#!/bin/bash\n#---\n# name: X\n# type: file\n# pattern: \"**/*.go\"\n#---\n\ngo test ./...\n"}, want: "discobox.hooks"},
 		{name: "a hook without frontmatter", files: map[string]string{".discobox/hooks/50-x.sh": "#!/bin/bash\n\ngo tool task test\n"}, want: "discobox.hooks"},
 		{name: "no hooks at all", remove: []string{".discobox/hooks"}, want: "discobox.hooks"},
-		{name: "a dev target with no service", files: map[string]string{
-			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"),
-			".wnb.yaml":    "build:\n  command: go build ./...\n",
-			"go.mod":       strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1),
-		}, want: "discobox.dev-service"},
+		{name: "a dev target with no service", remove: []string{".discobox/services"}, want: "discobox.dev-service"},
 		{name: "a service without frontmatter", files: map[string]string{".discobox/services/10-api.sh": "#!/bin/bash\n\nexec go tool task dev\n"}, want: "discobox.services"},
 		{name: "a job on a GitHub-hosted runner", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-ubuntu-24.04-4", "ubuntu-latest")}, want: "ci.runners"},
 		{name: "setup-go on Linux", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "depot-windows-2025-4", "depot-ubuntu-24.04-4")}, want: "ci.no-setup"},
@@ -354,12 +345,10 @@ func TestAServerConfiguredByFileAndEnvPasses(t *testing.T) {
 	}
 }
 
-func TestADevTargetWithItsServiceAndHooksPasses(t *testing.T) {
+func TestASecondDevLoopWithItsConfigPasses(t *testing.T) {
 	dir := conforming(t)
-	write(t, dir, "Taskfile.yml", starterWith(t, "Taskfile.yml", "  test:\n", "  dev:\n    cmds: [go tool watchnbuild]\n\n  test:\n"))
-	write(t, dir, ".wnb.yaml", "build:\n  command: go build ./...\n")
-	write(t, dir, "go.mod", strings.Replace(goMod, "\tgithub.com/go-task", "\tgithub.com/discobox-ai/watchnbuild\n\tgithub.com/go-task", 1))
-	write(t, dir, ".discobox/services/10-api.sh", "#!/bin/bash\n#---\n# name: API\n# description: the dev loop\n#---\n\nexec go tool task dev\n")
+	write(t, dir, "Taskfile.yml", starterWith(t, "Taskfile.yml", "  test:\n", "  dev:cli:\n    cmds: [go tool watchnbuild -config .wnb.cli.yaml]\n\n  test:\n"))
+	write(t, dir, ".wnb.cli.yaml", "build:\n  command: go build ./...\n")
 	for _, id := range failing(t, dir) {
 		if strings.HasPrefix(id, "discobox.") || id == "env.dev-watch" {
 			t.Errorf("failing rule %s; this dev loop conforms", id)

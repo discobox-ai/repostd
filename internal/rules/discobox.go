@@ -49,7 +49,7 @@ var discoboxRules = []Rule{
 	},
 	{
 		ID:      "discobox.dev-service",
-		Summary: "Where there is a dev target or script, a discobox service starts it.",
+		Summary: "A discobox service starts the dev target, or a node repo's dev script where there is one.",
 		Check: func(r *repo.Repo) []Issue {
 			if !hasDev(r) {
 				return nil

@@ -101,6 +101,7 @@ require (
 	github.com/dave/dst v0.27.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
+	github.com/discobox-ai/watchnbuild v0.1.1-0.20260919045642-dfdfac09bda9 // indirect
 	github.com/dlclark/regexp2/v2 v2.7.1 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -312,6 +313,7 @@ require (
 
 tool (
 	github.com/discobox-ai/repostd/cmd/repocheck
+	github.com/discobox-ai/watchnbuild
 	github.com/go-task/task/v3/cmd/task
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 )
