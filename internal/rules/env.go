@@ -11,7 +11,7 @@ import (
 )
 
 // WatchTool is the watch-and-build loop a `dev` target runs.
-const WatchTool = "github.com/discobox-ai/watchnbuild"
+const WatchTool = "github.com/discobox-ai/watchnbuild/cmd/watchnbuild"
 
 // RequiredTools are the go.mod tool directives every repo has.
 var RequiredTools = []string{

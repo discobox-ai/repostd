@@ -55,7 +55,7 @@ inside a git repository, `$RC` says so; stop and tell the user.
    - `env GOPROXY=direct go get -tool` for
      `github.com/go-task/task/v3/cmd/task`,
      `github.com/golangci/golangci-lint/v2/cmd/golangci-lint`,
-     `github.com/discobox-ai/watchnbuild@main` and
+     `github.com/discobox-ai/watchnbuild/cmd/watchnbuild@main` and
      `github.com/discobox-ai/repostd/cmd/repocheck@main`.
    - `go mod tidy`, because `go get -tool` leaves `go.sum` incomplete and
      `verify` would fail on it.
