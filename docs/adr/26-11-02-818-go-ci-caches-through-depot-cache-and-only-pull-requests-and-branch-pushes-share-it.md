@@ -47,8 +47,10 @@ pull request planted.
    publishes, so a new publishing path is off the cache without anyone
    remembering to opt it out. The clear reaches only the steps after the
    action, so `ci.shared-cache` requires a non-Windows job to run nothing
-   but `actions/checkout` before an unconditional task action step, and
-   nothing but the runner to set either variable.
+   before an unconditional task action step but actions that run no Go
+   (checkout, artifact download and upload, Docker login and setup, the
+   Depot CLI's setup: the rule's list), and nothing but the runner to set
+   either variable.
 
 ## Alternatives rejected
 
