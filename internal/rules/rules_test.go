@@ -194,6 +194,10 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a local action step setting GOCACHEPROG", files: map[string]string{".github/actions/build/action.yml": "name: Build\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: nix develop -c go tool task build\n      env:\n        GOCACHEPROG: depot gocache\n"}, want: "ci.shared-cache"},
 		{name: "a release run without the task action", files: map[string]string{".github/workflows/release.yml": "on:\n  push:\n    tags: [\"v*\"]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: depot-ubuntu-24.04-4\n    steps:\n      - run: nix develop -c go tool task release:build\n"}, want: "ci.shared-cache"},
 		{name: "a run step before the task action", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - uses: ./.github/actions/task\n        with:\n          target: verify\n", "      - run: nix develop -c go tool task generate\n      - uses: ./.github/actions/task\n        with:\n          target: verify\n")}, want: "ci.shared-cache"},
+		{name: "a job env from an expression", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "    timeout-minutes: 30\n", "    timeout-minutes: 30\n    env: ${{ fromJSON(vars.CI_ENV) }}\n")}, want: "ci.shared-cache"},
+		{name: "a local action before the task action", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - uses: ./.github/actions/task\n        with:\n          target: verify\n", "      - uses: ./.github/actions/build\n      - uses: ./.github/actions/task\n        with:\n          target: verify\n")}, want: "ci.shared-cache"},
+		{name: "a third-party action with no task action", files: map[string]string{".github/workflows/lint.yml": "on: pull_request\npermissions:\n  contents: read\njobs:\n  lint:\n    runs-on: depot-ubuntu-24.04-4\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0\n"}, want: "ci.shared-cache"},
+		{name: "a run step after a conditional task action", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - uses: ./.github/actions/task\n        with:\n          target: verify\n", "      - if: github.event_name == 'pull_request'\n        uses: ./.github/actions/task\n        with:\n          target: verify\n      - run: nix develop -c go tool task generate\n")}, want: "ci.shared-cache"},
 		{name: "build logic in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "run: go tool task test", "run: go test ./...")}, want: "ci.run-steps"},
 		{name: "an action pinned by tag", files: map[string]string{".github/workflows/ci.yml": strings.ReplaceAll(starterWith(t, ".github/workflows/ci.yml", "", ""), "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "actions/checkout@v7")}, want: "ci.pinned"},
 		{name: "write permissions at the top level", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "contents: read", "contents: write")}, want: "ci.permissions"},
@@ -383,5 +387,28 @@ func TestARunStepAfterTheTaskActionPasses(t *testing.T) {
 	write(t, dir, ".github/workflows/release.yml", "on:\n  push:\n    tags: [\"v*\"]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: depot-ubuntu-24.04-4\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - uses: ./.github/actions/task\n        with:\n          target: release:build\n      - run: nix develop -c go tool task release:publish\n")
 	for _, id := range failing(t, dir) {
 		t.Errorf("unexpected failing rule %s", id)
+	}
+}
+
+// An env: expression is not an unmarshal error: the workflow still parses,
+// so the other rules still check it, and only ci.shared-cache reports it.
+func TestAnEnvExpressionStillParses(t *testing.T) {
+	dir := conforming(t)
+	ci := starterWith(t, ".github/workflows/ci.yml", "    timeout-minutes: 30\n", "    timeout-minutes: 30\n    env: ${{ fromJSON(vars.CI_ENV) }}\n")
+	ci = strings.Replace(ci, "      - run: go tool task test\n", "      - run: go tool task test\n        env: ${{ fromJSON(vars.TEST_ENV) }}\n", 1)
+	ci = strings.Replace(ci, "persist-credentials: false", "persist-credentials: true", 1)
+	write(t, dir, ".github/workflows/ci.yml", ci)
+	write(t, dir, ".github/actions/build/action.yml", "name: Build\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: nix develop -c go tool task build\n      env: ${{ fromJSON(inputs.env) }}\n")
+	if got, want := failing(t, dir), []string{"ci.checkout-credentials", "ci.shared-cache"}; !slices.Equal(got, want) {
+		t.Errorf("failing rules = %v, want %v", got, want)
+	}
+	var shared int
+	for _, f := range rules.Run(load(t, dir)) {
+		if f.Rule == "ci.shared-cache" {
+			shared++
+		}
+	}
+	if shared != 3 {
+		t.Errorf("ci.shared-cache reported %d findings, want 3 (job, step, action step)", shared)
 	}
 }
