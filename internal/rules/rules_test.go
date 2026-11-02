@@ -187,6 +187,13 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "actions/cache in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - run: go tool task test\n", "      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go\n      - run: go tool task test\n")}, want: "ci.no-actions-cache"},
 		{name: "actions/cache/restore in a local action", files: map[string]string{".github/actions/restore/action.yml": "name: Restore\nruns:\n  using: composite\n  steps:\n    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n      with:\n        path: ~/go/pkg/mod\n        key: go\n"}, want: "ci.no-actions-cache"},
 		{name: "setup-go with its cache on", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "          cache: false\n", "")}, want: "ci.no-actions-cache"},
+		{name: "actions/cache in mixed case", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - run: go tool task test\n", "      - uses: Actions/Cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go\n      - run: go tool task test\n")}, want: "ci.no-actions-cache"},
+		{name: "a local action that does not parse", files: map[string]string{".github/actions/broken/action.yml": "runs:\n  steps: [\n"}, want: "ci.no-actions-cache"},
+		{name: "a job setting GOCACHEPROG", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "    timeout-minutes: 30\n", "    timeout-minutes: 30\n    env:\n      GOCACHEPROG: depot gocache\n")}, want: "ci.shared-cache"},
+		{name: "a workflow clearing GOLANGCI_LINT_CACHEPROG itself", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "permissions:\n", "env:\n  GOLANGCI_LINT_CACHEPROG: \"\"\npermissions:\n")}, want: "ci.shared-cache"},
+		{name: "a local action step setting GOCACHEPROG", files: map[string]string{".github/actions/build/action.yml": "name: Build\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: nix develop -c go tool task build\n      env:\n        GOCACHEPROG: depot gocache\n"}, want: "ci.shared-cache"},
+		{name: "a release run without the task action", files: map[string]string{".github/workflows/release.yml": "on:\n  push:\n    tags: [\"v*\"]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: depot-ubuntu-24.04-4\n    steps:\n      - run: nix develop -c go tool task release:build\n"}, want: "ci.shared-cache"},
+		{name: "a run step before the task action", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "      - uses: ./.github/actions/task\n        with:\n          target: verify\n", "      - run: nix develop -c go tool task generate\n      - uses: ./.github/actions/task\n        with:\n          target: verify\n")}, want: "ci.shared-cache"},
 		{name: "build logic in a workflow", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "run: go tool task test", "run: go test ./...")}, want: "ci.run-steps"},
 		{name: "an action pinned by tag", files: map[string]string{".github/workflows/ci.yml": strings.ReplaceAll(starterWith(t, ".github/workflows/ci.yml", "", ""), "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "actions/checkout@v7")}, want: "ci.pinned"},
 		{name: "write permissions at the top level", files: map[string]string{".github/workflows/ci.yml": starterWith(t, ".github/workflows/ci.yml", "contents: read", "contents: write")}, want: "ci.permissions"},
@@ -366,5 +373,15 @@ func TestAToolNamedInAHooksErrorMessageIsNotARun(t *testing.T) {
 		if id == "discobox.hooks" {
 			t.Error("a tool named inside a heredoc was read as the hook running it")
 		}
+	}
+}
+
+// A release job enters the task action first; the run steps after it see
+// the cache it chose. A Windows job's runner sets no GOCACHEPROG.
+func TestARunStepAfterTheTaskActionPasses(t *testing.T) {
+	dir := conforming(t)
+	write(t, dir, ".github/workflows/release.yml", "on:\n  push:\n    tags: [\"v*\"]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: depot-ubuntu-24.04-4\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - uses: ./.github/actions/task\n        with:\n          target: release:build\n      - run: nix develop -c go tool task release:publish\n")
+	for _, id := range failing(t, dir) {
+		t.Errorf("unexpected failing rule %s", id)
 	}
 }

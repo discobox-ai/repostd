@@ -415,12 +415,13 @@ library or CLI repo has no server and skips it.
   `GOCACHEPROG`, fetched per object; modules come from the proxy. No
   `actions/cache` anywhere, and `actions/setup-go` sets `cache: false`:
   `actions/cache` restored and saved the whole cache as a tarball, 6–11
-  minutes a job. Depot's Windows runner sets no `GOCACHEPROG`, so the
-  Windows job installs the CLI (`depot/setup-action`) and sets
-  `GOCACHEPROG: depot gocache` itself. Only `pull_request` and branch-push
-  runs share the cache: a pull request's code can write it and Go trusts
-  what it returns, so every other run (releases, schedules) clears it, as
-  the managed task action does. `ci.no-actions-cache`
+  minutes a job. Windows builds cold: `depot gocache` there fails when
+  another process holds an object open. `ci.no-actions-cache`
+- Only `pull_request` and branch-push runs share that cache: a pull
+  request's code can write it and Go trusts what it returns. The task action
+  clears it on every other run, so nothing sets `GOCACHEPROG` or
+  `GOLANGCI_LINT_CACHEPROG` itself, and a non-Windows job runs no step
+  before the task action. `ci.shared-cache`
 - Workflows contain no build logic. Every `run:` is one
   `[nix develop -c] go tool task <target>`, or a node repo's
   `pnpm run <script>`. `ci.run-steps`

@@ -38,7 +38,8 @@ runs:
     # with its credentials and can write it, so every other run (a tag that
     # releases, a release dispatched by hand off a branch, a schedule, any
     # trigger added later) turns it off for the rest of the job and builds
-    # from cold local caches.
+    # from cold local caches. GITHUB_ENV reaches only later steps, so a job
+    # runs nothing before this action (repostd ci.shared-cache).
     - name: Choose the Go build cache
       shell: bash
       env:
@@ -49,15 +50,18 @@ runs:
           echo "GOCACHEPROG=" >> "$GITHUB_ENV"
           echo "GOLANGCI_LINT_CACHEPROG=" >> "$GITHUB_ENV"
           # Go reads an empty variable as unset and falls back to its go.env
-          # settings, so check what Go itself now sees.
-          if [ -n "$(GOCACHEPROG='' $go env GOCACHEPROG)" ]; then
+          # settings, so check what Go itself now sees: the last line, past
+          # any devShell output. A failing nix or go fails the assignment,
+          # since Actions runs bash -eo pipefail.
+          seen=$(GOCACHEPROG='' $go env GOCACHEPROG | tail -n 1)
+          if [ -n "$seen" ]; then
             echo "::error title=Shared Go cache::GOCACHEPROG is still set from Go's settings file; this run must not read a cache pull requests write."
             exit 1
           fi
           echo "A $GITHUB_EVENT_NAME run of $GITHUB_REF: Depot Cache is off, Go and golangci-lint build from cold local caches."
           exit 0
         fi
-        prog=$($go env GOCACHEPROG)
+        prog=$($go env GOCACHEPROG | tail -n 1)
         if [ -z "$prog" ]; then
           echo "::warning title=No Depot Cache::GOCACHEPROG is unset on this runner, so Go builds from a cold cache. Is Depot Cache's automatic connection on for Actions jobs?"
           exit 0
