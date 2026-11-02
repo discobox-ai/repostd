@@ -419,9 +419,10 @@ library or CLI repo has no server and skips it.
   another process holds an object open. `ci.no-actions-cache`
 - Only `pull_request` and branch-push runs share that cache: a pull
   request's code can write it and Go trusts what it returns. The task action
-  clears it on every other run, so nothing sets `GOCACHEPROG` or
-  `GOLANGCI_LINT_CACHEPROG` itself, and a non-Windows job runs no step
-  before the task action. `ci.shared-cache`
+  clears it on every other run, for the steps after it. So no `env:` sets
+  `GOCACHEPROG` or `GOLANGCI_LINT_CACHEPROG` or is an expression, and a
+  non-Windows job runs nothing but `actions/checkout` before a
+  `./.github/actions/task` step without `if:`. `ci.shared-cache`
 - Workflows contain no build logic. Every `run:` is one
   `[nix develop -c] go tool task <target>`, or a node repo's
   `pnpm run <script>`. `ci.run-steps`

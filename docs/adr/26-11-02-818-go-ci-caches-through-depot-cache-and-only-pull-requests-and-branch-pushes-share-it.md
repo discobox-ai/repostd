@@ -47,7 +47,8 @@ pull request planted.
    publishes, so a new publishing path is off the cache without anyone
    remembering to opt it out. The clear reaches only the steps after the
    action, so `ci.shared-cache` requires a non-Windows job to run nothing
-   before it, and nothing but the runner to set either variable.
+   but `actions/checkout` before an unconditional task action step, and
+   nothing but the runner to set either variable.
 
 ## Alternatives rejected
 
@@ -83,4 +84,6 @@ pull request planted.
 - Depot Cache on Windows. Revisit when Depot fixes `depot gocache`'s rename
   over an existing object on Windows; then the Go starter's Windows job
   installs the CLI (`depot/setup-action`) and sets `GOCACHEPROG: depot
-  gocache` for pull request and branch-push runs only.
+  gocache` for pull request and branch-push runs only, and
+  `ci.shared-cache` learns to accept that one gated `GOCACHEPROG` on the
+  Windows job, which it rejects today.

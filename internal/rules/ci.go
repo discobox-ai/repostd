@@ -46,7 +46,7 @@ var (
 type workflow struct {
 	On          yaml.Node      `yaml:"on"`
 	Permissions yaml.Node      `yaml:"permissions"`
-	Env         map[string]any `yaml:"env"`
+	Env         yaml.Node      `yaml:"env"`
 	Jobs        map[string]job `yaml:"jobs"`
 }
 
@@ -56,15 +56,17 @@ type job struct {
 	Strategy struct {
 		Matrix map[string]yaml.Node `yaml:"matrix"`
 	} `yaml:"strategy"`
-	Env   map[string]any `yaml:"env"`
-	Steps []step         `yaml:"steps"`
+	// Env is a node, not a map: it may be an expression.
+	Env   yaml.Node `yaml:"env"`
+	Steps []step    `yaml:"steps"`
 }
 
 type step struct {
+	If   string         `yaml:"if"`
 	Uses string         `yaml:"uses"`
 	Run  string         `yaml:"run"`
 	With map[string]any `yaml:"with"`
-	Env  map[string]any `yaml:"env"`
+	Env  yaml.Node      `yaml:"env"`
 }
 
 // action returns the step's action without its ref.
@@ -206,37 +208,28 @@ var ciRules = []Rule{
 	},
 	{
 		ID:      "ci.shared-cache",
-		Summary: "No workflow or action sets GOCACHEPROG or GOLANGCI_LINT_CACHEPROG, and a Go repo's non-Windows job runs nothing before the task action.",
+		Summary: "No workflow or action sets GOCACHEPROG or GOLANGCI_LINT_CACHEPROG, or an env: expression that could; a Go repo's non-Windows job runs nothing but actions/checkout before an unconditional task action.",
 		Stacks:  goOnly,
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
 			for _, p := range workflowFiles(r) {
 				if w, err := loadWorkflow(r, p); err == nil {
-					out = append(out, setsCacheProg(p, "the workflow", w.Env)...)
+					out = append(out, setsCacheProg(p, "the workflow", &w.Env)...)
 				}
 			}
 			groups, _ := stepGroups(r) // ci.no-actions-cache reports unparsable actions.
 			for _, g := range groups {
 				if g.job != nil {
-					out = append(out, setsCacheProg(g.path, g.name, g.job.Env)...)
+					out = append(out, setsCacheProg(g.path, g.name, &g.job.Env)...)
 				}
 				for _, s := range g.steps {
-					out = append(out, setsCacheProg(g.path, g.name+" step", s.Env)...)
+					out = append(out, setsCacheProg(g.path, g.name+" step", &s.Env)...)
 				}
-				// The task action clears the runner's GOCACHEPROG through
-				// GITHUB_ENV, which reaches only the steps after it. Depot's
-				// Windows runner sets none.
+				// Depot's Windows runner sets no GOCACHEPROG.
 				if g.job == nil || windowsJob(*g.job) {
 					continue
 				}
-				for _, s := range g.steps {
-					if s.Uses == taskAction {
-						break
-					}
-					if s.Run != "" {
-						out = append(out, issue(g.path, "%s: run step %q comes before %s, which decides whether the job may use the shared Go cache", g.name, firstLine(s.Run), taskAction))
-					}
-				}
+				out = append(out, beforeTheClear(g)...)
 			}
 			return out
 		},
@@ -444,15 +437,58 @@ func stepGroups(r *repo.Repo) ([]stepGroup, []Issue) {
 	return groups, bad
 }
 
-// setsCacheProg reports each shared-cache variable env sets.
-func setsCacheProg(p, where string, env map[string]any) []Issue {
+// setsCacheProg reports each shared-cache variable env sets, and an env that
+// is an expression, which could set one unseen.
+func setsCacheProg(p, where string, env *yaml.Node) []Issue {
+	switch env.Kind {
+	case 0:
+		return nil
+	case yaml.MappingNode:
+	default:
+		return []Issue{issue(p, "%s sets env: from an expression, which could set %s unseen; list its variables", where, strings.Join(cacheProgVars, " or "))}
+	}
 	var out []Issue
 	for _, v := range cacheProgVars {
-		if _, ok := env[v]; ok {
+		if _, ok := mapValue(env, v); ok {
 			out = append(out, issue(p, "%s sets %s; only the runner sets it, and the task action clears it on runs that must not share the cache", where, v))
 		}
 	}
 	return out
+}
+
+// beforeTheClear reports each step of a non-Windows job that runs before the
+// task action has chosen the Go cache. The action clears the runner's
+// GOCACHEPROG through GITHUB_ENV, which reaches only later steps, so only
+// actions/checkout may come first. A task step with an if: may be skipped,
+// so it is not the clear; it clears for itself, so it is not flagged.
+func beforeTheClear(g stepGroup) []Issue {
+	var before []step
+	for _, s := range g.steps {
+		switch {
+		case s.Uses == taskAction && s.If == "":
+			var out []Issue
+			for _, b := range before {
+				out = append(out, issue(g.path, "%s: %s comes before %s, which decides whether the job may use the shared Go cache; only actions/checkout may", g.name, describe(b), taskAction))
+			}
+			return out
+		case s.Uses == taskAction, strings.EqualFold(s.action(), "actions/checkout"):
+		default:
+			before = append(before, s)
+		}
+	}
+	var out []Issue
+	for _, b := range before {
+		out = append(out, issue(g.path, "%s: %s runs with no unconditional %s step before it to decide whether the job may use the shared Go cache", g.name, describe(b), taskAction))
+	}
+	return out
+}
+
+// describe names a step in a finding.
+func describe(s step) string {
+	if s.Uses != "" {
+		return "step uses " + s.Uses
+	}
+	return fmt.Sprintf("run step %q", firstLine(s.Run))
 }
 
 func loadWorkflow(r *repo.Repo, p string) (*workflow, error) {
