@@ -409,9 +409,18 @@ library or CLI repo has no server and skips it.
   `depot-windows-*`). `ci.runners`
 - Workflows install no tools: no `actions/setup-*`. Nix does not run on
   Windows, so a Go repo's `depot-windows-*` job may use `actions/setup-go`
-  with `go-version-file: go.mod` and nothing else. A node repo's toolchain
-  is installed by the managed pnpm and repocheck actions only.
-  `ci.no-setup`
+  with `go-version-file: go.mod`. A node repo's toolchain is installed by
+  the managed pnpm and repocheck actions only. `ci.no-setup`
+- A Go repo's build and test cache is Depot Cache, through the runner's
+  `GOCACHEPROG`, fetched per object; modules come from the proxy. No
+  `actions/cache` anywhere, and `actions/setup-go` sets `cache: false`:
+  `actions/cache` restored and saved the whole cache as a tarball, 6–11
+  minutes a job. Depot's Windows runner sets no `GOCACHEPROG`, so the
+  Windows job installs the CLI (`depot/setup-action`) and sets
+  `GOCACHEPROG: depot gocache` itself. Only `pull_request` and branch-push
+  runs share the cache: a pull request's code can write it and Go trusts
+  what it returns, so every other run (releases, schedules) clears it, as
+  the managed task action does. `ci.no-actions-cache`
 - Workflows contain no build logic. Every `run:` is one
   `[nix develop -c] go tool task <target>`, or a node repo's
   `pnpm run <script>`. `ci.run-steps`

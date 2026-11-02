@@ -106,12 +106,13 @@ func TestAnInitializedNodeRepoConformsToTheStandard(t *testing.T) {
 }
 
 // A Remix app's own layout is not the Go root-directory list, and none of the
-// Go toolchain rules apply to a repo with no go.mod.
+// Go toolchain rules apply to a repo with no go.mod: not even its CI caching.
 func TestTheGoToolchainRulesSkipANodeRepo(t *testing.T) {
 	dir := conformingNode(t)
 	write(t, dir, "mock/server.ts", "export {}\n")
+	write(t, dir, ".github/actions/store/action.yml", "name: Store\nruns:\n  using: composite\n  steps:\n    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n      with:\n        path: ~/.pnpm-store\n        key: pnpm\n")
 	for _, id := range failing(t, dir) {
-		if strings.HasPrefix(id, "layout.") || id == "env.go-tools" || id == "env.flake" || id == "env.taskfile-targets" {
+		if strings.HasPrefix(id, "layout.") || id == "env.go-tools" || id == "env.flake" || id == "env.taskfile-targets" || id == "ci.no-actions-cache" {
 			t.Errorf("Go rule %s applied to a node repo", id)
 		}
 	}

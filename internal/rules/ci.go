@@ -3,6 +3,7 @@ package rules
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -171,6 +172,29 @@ var ciRules = []Rule{
 		},
 	},
 	{
+		ID:      "ci.no-actions-cache",
+		Summary: "A Go repo's workflows and actions use no actions/cache, and actions/setup-go sets cache: false; Go's cache is Depot Cache.",
+		Stacks:  goOnly,
+		Check: func(r *repo.Repo) []Issue {
+			var out []Issue
+			for _, p := range actionFiles(r) {
+				steps, err := fileSteps(r, p)
+				if err != nil {
+					continue // ci.permissions reports unparsable workflows.
+				}
+				for _, s := range steps {
+					switch a := s.action(); {
+					case a == "actions/cache" || strings.HasPrefix(a, "actions/cache/"):
+						out = append(out, issue(p, "uses %s; Go's build and test cache is Depot Cache, through the runner's GOCACHEPROG", a))
+					case a == "actions/setup-go" && fmt.Sprint(s.With["cache"]) != "false":
+						out = append(out, issue(p, "actions/setup-go without cache: false; its cache is actions/cache"))
+					}
+				}
+			}
+			return out
+		},
+	},
+	{
 		ID:      "ci.run-steps",
 		Summary: "Every workflow run: step is one `[nix develop -c] go tool task <target>`, or a node repo's `pnpm run <script>`.",
 		Check: func(r *repo.Repo) []Issue {
@@ -325,6 +349,26 @@ func actionFiles(r *repo.Repo) []string {
 		}
 	}
 	return out
+}
+
+// fileSteps returns the steps of every job of a workflow, or of a local
+// composite action.
+func fileSteps(r *repo.Repo, p string) ([]step, error) {
+	data, _ := r.Read(p)
+	var f struct {
+		Jobs map[string]job `yaml:"jobs"`
+		Runs struct {
+			Steps []step `yaml:"steps"`
+		} `yaml:"runs"`
+	}
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	out := f.Runs.Steps
+	for _, name := range slices.Sorted(maps.Keys(f.Jobs)) {
+		out = append(out, f.Jobs[name].Steps...)
+	}
+	return out, nil
 }
 
 func loadWorkflow(r *repo.Repo, p string) (*workflow, error) {
