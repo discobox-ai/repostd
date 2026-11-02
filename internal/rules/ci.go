@@ -3,7 +3,6 @@ package rules
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -47,6 +46,7 @@ var (
 type workflow struct {
 	On          yaml.Node      `yaml:"on"`
 	Permissions yaml.Node      `yaml:"permissions"`
+	Env         map[string]any `yaml:"env"`
 	Jobs        map[string]job `yaml:"jobs"`
 }
 
@@ -56,13 +56,15 @@ type job struct {
 	Strategy struct {
 		Matrix map[string]yaml.Node `yaml:"matrix"`
 	} `yaml:"strategy"`
-	Steps []step `yaml:"steps"`
+	Env   map[string]any `yaml:"env"`
+	Steps []step         `yaml:"steps"`
 }
 
 type step struct {
 	Uses string         `yaml:"uses"`
 	Run  string         `yaml:"run"`
 	With map[string]any `yaml:"with"`
+	Env  map[string]any `yaml:"env"`
 }
 
 // action returns the step's action without its ref.
@@ -70,6 +72,22 @@ func (s step) action() string {
 	a, _, _ := strings.Cut(s.Uses, "@")
 	return a
 }
+
+// windowsJob reports whether every runner the job may run on is a Depot
+// Windows runner.
+func windowsJob(j job) bool {
+	labels, _ := runnerLabels(j)
+	windows := len(labels) > 0
+	for _, l := range labels {
+		windows = windows && strings.HasPrefix(l, "depot-windows")
+	}
+	return windows
+}
+
+// cacheProgVars are the variables that point Go and golangci-lint at a
+// shared cache. Only the runner sets them, and only the managed task action
+// clears them (ADR 26-11-02-818).
+var cacheProgVars = []string{"GOCACHEPROG", "GOLANGCI_LINT_CACHEPROG"}
 
 var ciRules = []Rule{
 	{
@@ -147,11 +165,7 @@ var ciRules = []Rule{
 					}
 					return out
 				}
-				labels, _ := runnerLabels(j)
-				windows := len(labels) > 0
-				for _, l := range labels {
-					windows = windows && strings.HasPrefix(l, "depot-windows")
-				}
+				windows := windowsJob(j)
 				var out []Issue
 				for _, s := range j.Steps {
 					a := s.action()
@@ -176,18 +190,51 @@ var ciRules = []Rule{
 		Summary: "A Go repo's workflows and actions use no actions/cache, and actions/setup-go sets cache: false; Go's cache is Depot Cache.",
 		Stacks:  goOnly,
 		Check: func(r *repo.Repo) []Issue {
-			var out []Issue
-			for _, p := range actionFiles(r) {
-				steps, err := fileSteps(r, p)
-				if err != nil {
-					continue // ci.permissions reports unparsable workflows.
-				}
-				for _, s := range steps {
-					switch a := s.action(); {
+			groups, out := stepGroups(r)
+			for _, g := range groups {
+				for _, s := range g.steps {
+					switch a := strings.ToLower(s.action()); {
 					case a == "actions/cache" || strings.HasPrefix(a, "actions/cache/"):
-						out = append(out, issue(p, "uses %s; Go's build and test cache is Depot Cache, through the runner's GOCACHEPROG", a))
+						out = append(out, issue(g.path, "%s uses %s; Go's build and test cache is Depot Cache, through the runner's GOCACHEPROG", g.name, s.action()))
 					case a == "actions/setup-go" && fmt.Sprint(s.With["cache"]) != "false":
-						out = append(out, issue(p, "actions/setup-go without cache: false; its cache is actions/cache"))
+						out = append(out, issue(g.path, "%s: actions/setup-go without cache: false; its cache is actions/cache", g.name))
+					}
+				}
+			}
+			return out
+		},
+	},
+	{
+		ID:      "ci.shared-cache",
+		Summary: "No workflow or action sets GOCACHEPROG or GOLANGCI_LINT_CACHEPROG, and a Go repo's non-Windows job runs nothing before the task action.",
+		Stacks:  goOnly,
+		Check: func(r *repo.Repo) []Issue {
+			var out []Issue
+			for _, p := range workflowFiles(r) {
+				if w, err := loadWorkflow(r, p); err == nil {
+					out = append(out, setsCacheProg(p, "the workflow", w.Env)...)
+				}
+			}
+			groups, _ := stepGroups(r) // ci.no-actions-cache reports unparsable actions.
+			for _, g := range groups {
+				if g.job != nil {
+					out = append(out, setsCacheProg(g.path, g.name, g.job.Env)...)
+				}
+				for _, s := range g.steps {
+					out = append(out, setsCacheProg(g.path, g.name+" step", s.Env)...)
+				}
+				// The task action clears the runner's GOCACHEPROG through
+				// GITHUB_ENV, which reaches only the steps after it. Depot's
+				// Windows runner sets none.
+				if g.job == nil || windowsJob(*g.job) {
+					continue
+				}
+				for _, s := range g.steps {
+					if s.Uses == taskAction {
+						break
+					}
+					if s.Run != "" {
+						out = append(out, issue(g.path, "%s: run step %q comes before %s, which decides whether the job may use the shared Go cache", g.name, firstLine(s.Run), taskAction))
 					}
 				}
 			}
@@ -342,7 +389,12 @@ func workflowFiles(r *repo.Repo) []string {
 
 // actionFiles are the workflows and local composite actions.
 func actionFiles(r *repo.Repo) []string {
-	out := workflowFiles(r)
+	return append(workflowFiles(r), localActions(r)...)
+}
+
+// localActions are the repo's own composite actions.
+func localActions(r *repo.Repo) []string {
+	var out []string
 	for _, f := range r.Under(".github/actions") {
 		if b := path.Base(f); b == "action.yml" || b == "action.yaml" {
 			out = append(out, f)
@@ -351,24 +403,56 @@ func actionFiles(r *repo.Repo) []string {
 	return out
 }
 
-// fileSteps returns the steps of every job of a workflow, or of a local
-// composite action.
-func fileSteps(r *repo.Repo, p string) ([]step, error) {
-	data, _ := r.Read(p)
-	var f struct {
-		Jobs map[string]job `yaml:"jobs"`
-		Runs struct {
-			Steps []step `yaml:"steps"`
-		} `yaml:"runs"`
+// stepGroup is one workflow job's steps, or one local action's.
+type stepGroup struct {
+	path string
+	// name is `job "<id>"`, or `action "./<dir>"` for a local action.
+	name  string
+	job   *job // nil for a local action
+	steps []step
+}
+
+// stepGroups returns every workflow job and local action, in a stable
+// order, and an issue for each local action that does not parse.
+// Unparsable workflows are left to ci.permissions.
+func stepGroups(r *repo.Repo) ([]stepGroup, []Issue) {
+	var groups []stepGroup
+	for _, p := range workflowFiles(r) {
+		w, err := loadWorkflow(r, p)
+		if err != nil {
+			continue
+		}
+		for _, name := range sortedJobs(w) {
+			j := w.Jobs[name]
+			groups = append(groups, stepGroup{path: p, name: fmt.Sprintf("job %q", name), job: &j, steps: j.Steps})
+		}
 	}
-	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, err
+	var bad []Issue
+	for _, p := range localActions(r) {
+		data, _ := r.Read(p)
+		var a struct {
+			Runs struct {
+				Steps []step `yaml:"steps"`
+			} `yaml:"runs"`
+		}
+		if err := yaml.Unmarshal(data, &a); err != nil {
+			bad = append(bad, issue(p, "does not parse: %v", err))
+			continue
+		}
+		groups = append(groups, stepGroup{path: p, name: fmt.Sprintf("action %q", "./"+path.Dir(p)), steps: a.Runs.Steps})
 	}
-	out := f.Runs.Steps
-	for _, name := range slices.Sorted(maps.Keys(f.Jobs)) {
-		out = append(out, f.Jobs[name].Steps...)
+	return groups, bad
+}
+
+// setsCacheProg reports each shared-cache variable env sets.
+func setsCacheProg(p, where string, env map[string]any) []Issue {
+	var out []Issue
+	for _, v := range cacheProgVars {
+		if _, ok := env[v]; ok {
+			out = append(out, issue(p, "%s sets %s; only the runner sets it, and the task action clears it on runs that must not share the cache", where, v))
+		}
 	}
-	return out, nil
+	return out
 }
 
 func loadWorkflow(r *repo.Repo, p string) (*workflow, error) {

@@ -51,12 +51,10 @@ jobs:
 
   # Nix does not run on Windows, so this job gets Go from setup-go (repostd
   # ci.no-setup), with setup-go's own cache off: it is actions/cache (repostd
-  # ci.no-actions-cache). Go's cache is Depot Cache, as on Linux, but Depot's
-  # Windows runner carries only its credentials, not the depot CLI or
-  # GOCACHEPROG: the job installs the CLI and sets GOCACHEPROG itself, only
-  # for a pull request or a push to a branch. Go trusts what the cache
-  # returns, and a pull request's code can write it, so any other run (a
-  # release, a schedule) builds cold.
+  # ci.no-actions-cache). It builds cold: depot gocache on Windows renames
+  # each object over its final path even when it exists, which Windows
+  # refuses while another process (vet) has it open, failing about one run
+  # in eight.
   windows:
     runs-on: depot-windows-2025-4
     timeout-minutes: 30
@@ -68,9 +66,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: depot/setup-action@91bc8495a33ebfc504ffc89e5674379ccf23c29c # v1.7.2
-        with:
-          version: 2.102.25
       - run: go tool task test
-        env:
-          GOCACHEPROG: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))) && 'depot gocache' || '' }}

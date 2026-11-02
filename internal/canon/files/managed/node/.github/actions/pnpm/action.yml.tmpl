@@ -17,8 +17,8 @@ inputs:
 runs:
   using: composite
   steps:
-    # Depot runners back the Actions cache API with Depot Cache, so the
-    # action's own store cache is already the fast path.
+    # Depot Cache has no pnpm integration, so the pnpm store is kept with
+    # the action's own cache, which is actions/cache (ADR 26-11-02-818).
     - name: Install pnpm, node, and the dependencies
       uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
       with:
