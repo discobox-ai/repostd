@@ -91,6 +91,19 @@ func windowsJob(j job) bool {
 // clears them (ADR 26-11-02-818).
 var cacheProgVars = []string{"GOCACHEPROG", "GOLANGCI_LINT_CACHEPROG"}
 
+// beforeTaskActions run no Go, so a job may run them before the task action
+// has chosen the Go cache: a publish job logs in or fetches artifacts first.
+// Matched on owner/repo, case-insensitively, at any ref.
+var beforeTaskActions = []string{
+	"actions/checkout",
+	"actions/download-artifact",
+	"actions/upload-artifact",
+	"docker/login-action",
+	"docker/setup-buildx-action",
+	"docker/setup-qemu-action",
+	"depot/setup-action",
+}
+
 var ciRules = []Rule{
 	{
 		ID:      "ci.workflow",
@@ -208,7 +221,7 @@ var ciRules = []Rule{
 	},
 	{
 		ID:      "ci.shared-cache",
-		Summary: "No workflow or action sets GOCACHEPROG or GOLANGCI_LINT_CACHEPROG, or an env: expression that could; a Go repo's non-Windows job runs nothing but actions/checkout before an unconditional task action.",
+		Summary: "No workflow or action sets GOCACHEPROG or GOLANGCI_LINT_CACHEPROG, or an env: expression that could; a Go repo's non-Windows job runs nothing before an unconditional task action but actions that run no Go (" + strings.Join(beforeTaskActions, ", ") + ").",
 		Stacks:  goOnly,
 		Check: func(r *repo.Repo) []Issue {
 			var out []Issue
@@ -440,10 +453,10 @@ func stepGroups(r *repo.Repo) ([]stepGroup, []Issue) {
 // setsCacheProg reports each shared-cache variable env sets, and an env that
 // is an expression, which could set one unseen.
 func setsCacheProg(p, where string, env *yaml.Node) []Issue {
-	switch env.Kind {
-	case 0:
+	switch {
+	case env.Kind == 0, env.Kind == yaml.ScalarNode && env.Tag == "!!null":
 		return nil
-	case yaml.MappingNode:
+	case env.Kind == yaml.MappingNode:
 	default:
 		return []Issue{issue(p, "%s sets env: from an expression, which could set %s unseen; list its variables", where, strings.Join(cacheProgVars, " or "))}
 	}
@@ -459,7 +472,7 @@ func setsCacheProg(p, where string, env *yaml.Node) []Issue {
 // beforeTheClear reports each step of a non-Windows job that runs before the
 // task action has chosen the Go cache. The action clears the runner's
 // GOCACHEPROG through GITHUB_ENV, which reaches only later steps, so only
-// actions/checkout may come first. A task step with an if: may be skipped,
+// beforeTaskActions may come first. A task step with an if: may be skipped,
 // so it is not the clear; it clears for itself, so it is not flagged.
 func beforeTheClear(g stepGroup) []Issue {
 	var before []step
@@ -468,10 +481,10 @@ func beforeTheClear(g stepGroup) []Issue {
 		case s.Uses == taskAction && s.If == "":
 			var out []Issue
 			for _, b := range before {
-				out = append(out, issue(g.path, "%s: %s comes before %s, which decides whether the job may use the shared Go cache; only actions/checkout may", g.name, describe(b), taskAction))
+				out = append(out, issue(g.path, "%s: %s comes before %s, which decides whether the job may use the shared Go cache; only actions that run no Go may (%s)", g.name, describe(b), taskAction, strings.Join(beforeTaskActions, ", ")))
 			}
 			return out
-		case s.Uses == taskAction, strings.EqualFold(s.action(), "actions/checkout"):
+		case s.Uses == taskAction, slices.ContainsFunc(beforeTaskActions, func(a string) bool { return strings.EqualFold(s.action(), a) }):
 		default:
 			before = append(before, s)
 		}

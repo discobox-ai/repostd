@@ -412,3 +412,34 @@ func TestAnEnvExpressionStillParses(t *testing.T) {
 		t.Errorf("ci.shared-cache reported %d findings, want 3 (job, step, action step)", shared)
 	}
 }
+
+// A publish job logs in and fetches artifacts before its release target;
+// none of that runs Go. An empty env: is no env.
+func TestAPublishJobsSetupBeforeTheTaskActionPasses(t *testing.T) {
+	dir := conforming(t)
+	write(t, dir, ".github/workflows/release.yml", `on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+env:
+jobs:
+  images:
+    runs-on: depot-ubuntu-24.04-4
+    env:
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Depot/Setup-Action@91bc8495a33ebfc504ffc89e5674379ccf23c29c # v1.7.2
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        env:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: ./.github/actions/task
+        with:
+          target: release:images
+`)
+	for _, id := range failing(t, dir) {
+		t.Errorf("unexpected failing rule %s", id)
+	}
+}

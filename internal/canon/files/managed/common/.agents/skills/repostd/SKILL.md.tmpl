@@ -421,8 +421,11 @@ library or CLI repo has no server and skips it.
   request's code can write it and Go trusts what it returns. The task action
   clears it on every other run, for the steps after it. So no `env:` sets
   `GOCACHEPROG` or `GOLANGCI_LINT_CACHEPROG` or is an expression, and a
-  non-Windows job runs nothing but `actions/checkout` before a
-  `./.github/actions/task` step without `if:`. `ci.shared-cache`
+  non-Windows job runs nothing before a `./.github/actions/task` step
+  without `if:` but actions that run no Go: `actions/checkout`,
+  `actions/download-artifact`, `actions/upload-artifact`,
+  `docker/login-action`, `docker/setup-buildx-action`,
+  `docker/setup-qemu-action`, `depot/setup-action`. `ci.shared-cache`
 - Workflows contain no build logic. Every `run:` is one
   `[nix develop -c] go tool task <target>`, or a node repo's
   `pnpm run <script>`. `ci.run-steps`
