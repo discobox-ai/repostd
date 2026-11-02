@@ -22,7 +22,7 @@ go 1.27.1
 
 tool (
 	github.com/discobox-ai/repostd/cmd/repocheck
-	github.com/discobox-ai/watchnbuild
+	github.com/discobox-ai/watchnbuild/cmd/watchnbuild
 	github.com/go-task/task/v3/cmd/task
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 )
@@ -168,7 +168,7 @@ func TestEachViolationIsReportedByItsRule(t *testing.T) {
 		{name: "a dev target using a config that does not exist", files: map[string]string{
 			"Taskfile.yml": starterWith(t, "Taskfile.yml", "  test:\n", "  dev:cli:\n    cmds: [go tool watchnbuild -config .wnb.cli.yaml]\n\n  test:\n"),
 		}, want: "env.dev-watch"},
-		{name: "watchnbuild not pinned", files: map[string]string{"go.mod": strings.Replace(goMod, "\tgithub.com/discobox-ai/watchnbuild\n", "", 1)}, want: "env.go-tools"},
+		{name: "watchnbuild not pinned", files: map[string]string{"go.mod": strings.Replace(goMod, "\tgithub.com/discobox-ai/watchnbuild/cmd/watchnbuild\n", "", 1)}, want: "env.go-tools"},
 		{name: "a server taking a config flag", files: map[string]string{
 			"cmd/example-server/main.go": "package main\n\nimport \"flag\"\n\nfunc main() {\n\tflag.String(\"listen\", \":8080\", \"address\")\n}\n",
 			"config.schema.json":         "{}\n",
